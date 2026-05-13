@@ -14,6 +14,7 @@ import { ProjectMembersTab } from "@/components/projects/ProjectMembersTab";
 import { ProjectActivity } from "@/components/projects/ProjectActivity";
 import { ProjectGantt } from "@/components/projects/ProjectGantt";
 import { ProjectTimeReport } from "@/components/projects/ProjectTimeReport";
+import { MilestoneList } from "@/components/milestones/MilestoneList";
 import { ExportButton } from "@/components/projects/ExportButton";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -43,7 +44,7 @@ export default function ProjectDetailPage({
   const toast = useToast();
 
   const [tab, setTab] = useState<
-    "tasks" | "gantt" | "time" | "members" | "activity"
+    "tasks" | "milestones" | "gantt" | "time" | "members" | "activity"
   >("tasks");
 
   if (project === undefined) {
@@ -157,6 +158,7 @@ export default function ProjectDetailPage({
         <nav className="-mb-px flex gap-4 sm:gap-6 overflow-x-auto">
           {[
             { value: "tasks", label: "Úkoly" },
+            { value: "milestones", label: "Milníky" },
             { value: "gantt", label: "Gantt" },
             { value: "time", label: "Výkazy" },
             { value: "members", label: "Členové" },
@@ -180,6 +182,9 @@ export default function ProjectDetailPage({
       </div>
 
       {tab === "tasks" && <TaskTree projectId={project._id} project={project} />}
+      {tab === "milestones" && (
+        <MilestoneList projectId={project._id} canManage={canEdit} />
+      )}
       {tab === "gantt" && <ProjectGantt projectId={project._id} project={project} />}
       {tab === "time" && <ProjectTimeReport project={project} />}
       {tab === "members" && (

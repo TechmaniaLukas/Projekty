@@ -8,7 +8,8 @@ type EntityType =
   | "user"
   | "dependency"
   | "attachment"
-  | "template";
+  | "template"
+  | "milestone";
 
 interface LogArgs {
   actor: Doc<"users">;

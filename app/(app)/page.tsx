@@ -7,6 +7,7 @@ import { MyTasks } from "@/components/dashboard/MyTasks";
 import { UpcomingDeadlines } from "@/components/dashboard/UpcomingDeadlines";
 import { DepartmentSummary } from "@/components/dashboard/DepartmentSummary";
 import { ThisWeekTime } from "@/components/dashboard/ThisWeekTime";
+import { PendingApprovals } from "@/components/milestones/PendingApprovals";
 import { ROLE_LABELS } from "@/lib/constants";
 
 export default function DashboardPage() {
@@ -46,6 +47,7 @@ export default function DashboardPage() {
           {today} · {ROLE_LABELS[me.role]}
         </p>
       </div>
+      <PendingApprovals />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <ThisWeekTime />
         <MyTasks />

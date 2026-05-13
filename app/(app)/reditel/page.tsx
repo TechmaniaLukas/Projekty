@@ -24,6 +24,7 @@ import {
   type ProjectDepartment,
 } from "@/lib/constants";
 import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
+import { PendingApprovals } from "@/components/milestones/PendingApprovals";
 import { cn } from "@/lib/utils";
 
 export default function ReditelPage() {
@@ -62,6 +63,8 @@ export default function ReditelPage() {
           </p>
         </div>
       </div>
+
+      <PendingApprovals />
 
       {/* KPI karty */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">

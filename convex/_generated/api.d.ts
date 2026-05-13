@@ -25,6 +25,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_notify from "../lib/notify.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_scheduling from "../lib/scheduling.js";
+import type * as milestones from "../milestones.js";
 import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
 import type * as reactions from "../reactions.js";
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   "lib/notify": typeof lib_notify;
   "lib/permissions": typeof lib_permissions;
   "lib/scheduling": typeof lib_scheduling;
+  milestones: typeof milestones;
   notifications: typeof notifications;
   projects: typeof projects;
   reactions: typeof reactions;

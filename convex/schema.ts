@@ -172,6 +172,34 @@ export default defineSchema({
     .index("by_task", ["taskId"])
     .index("by_start", ["startTime"]),
 
+  milestones: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    dueDate: v.number(),
+    order: v.number(),
+    status: v.union(
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("submitted"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    approverId: v.id("users"),
+    submittedBy: v.optional(v.id("users")),
+    submittedAt: v.optional(v.number()),
+    submitNote: v.optional(v.string()),
+    decidedBy: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    rejectionReason: v.optional(v.string()),
+    createdBy: v.id("users"),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_order", ["projectId", "order"])
+    .index("by_approver", ["approverId"])
+    .index("by_approver_and_status", ["approverId", "status"])
+    .index("by_due", ["dueDate"]),
+
   auditLog: defineTable({
     actorId: v.id("users"),
     action: v.string(),
@@ -183,6 +211,7 @@ export default defineSchema({
       v.literal("dependency"),
       v.literal("attachment"),
       v.literal("template"),
+      v.literal("milestone"),
     ),
     entityId: v.string(),
     projectId: v.optional(v.id("projects")),
