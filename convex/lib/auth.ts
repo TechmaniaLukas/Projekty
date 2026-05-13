@@ -4,7 +4,7 @@ import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import type { Id } from "../_generated/dataModel";
 
-export type Role = "admin" | "pm" | "department_lead" | "member";
+export type Role = "admin" | "director" | "pm" | "department_lead" | "member";
 
 export async function getCurrentUser(
   ctx: QueryCtx | MutationCtx,

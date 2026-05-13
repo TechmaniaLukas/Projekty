@@ -18,6 +18,10 @@ export function isDeptLead(user: User): boolean {
   return user.role === "department_lead";
 }
 
+export function isDirector(user: User): boolean {
+  return user.role === "director";
+}
+
 export function canManageUsers(user: User): boolean {
   return isAdmin(user);
 }
@@ -65,7 +69,7 @@ export async function canViewProject(
   user: User,
   project: Project,
 ): Promise<boolean> {
-  if (isAdmin(user) || isPm(user)) return true;
+  if (isAdmin(user) || isPm(user) || isDirector(user)) return true;
   if (isDeptLead(user)) {
     if (project.department === "cross") return true;
     return project.department === user.department;

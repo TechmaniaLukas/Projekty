@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users, Settings, Calendar, GanttChart, BarChart3, BookTemplate, History, Clock, X } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Settings, Calendar, GanttChart, BarChart3, BookTemplate, History, Clock, X, Crown } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -13,12 +13,15 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
   managerOnly?: boolean;
+  directorOnly?: boolean; // viditelné pouze pro ředitele (a admina)
+  hideForDirector?: boolean; // ředitel nemá v navigaci (např. šablony)
 }
 
 const items: NavItem[] = [
+  { href: "/reditel", label: "Ředitelský přehled", icon: Crown, directorOnly: true },
   { href: "/", label: "Můj přehled", icon: LayoutDashboard },
   { href: "/projekty", label: "Projekty", icon: FolderKanban },
-  { href: "/sablony", label: "Šablony", icon: BookTemplate },
+  { href: "/sablony", label: "Šablony", icon: BookTemplate, hideForDirector: true },
   { href: "/vykazy", label: "Výkazy", icon: Clock },
   { href: "/kalendar", label: "Kalendář", icon: Calendar },
   { href: "/casova-osa", label: "Časová osa", icon: GanttChart },
@@ -37,13 +40,16 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname();
   const me = useQuery(api.users.me);
   const isAdmin = me?.role === "admin";
+  const isDirector = me?.role === "director";
   const isManager = isAdmin || me?.role === "pm";
 
   const nav = (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
         if (item.adminOnly && !isAdmin) return null;
-        if (item.managerOnly && !isManager) return null;
+        if (item.managerOnly && !isManager && !isDirector) return null;
+        if (item.directorOnly && !isDirector && !isAdmin) return null;
+        if (item.hideForDirector && isDirector) return null;
         const active =
           item.href === "/"
             ? pathname === "/"

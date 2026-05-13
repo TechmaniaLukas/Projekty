@@ -16,6 +16,7 @@ import type * as constants from "../constants.js";
 import type * as crons from "../crons.js";
 import type * as deadlines from "../deadlines.js";
 import type * as dependencies from "../dependencies.js";
+import type * as directorDashboard from "../directorDashboard.js";
 import type * as email from "../email.js";
 import type * as emailInternal from "../emailInternal.js";
 import type * as http from "../http.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   deadlines: typeof deadlines;
   dependencies: typeof dependencies;
+  directorDashboard: typeof directorDashboard;
   email: typeof email;
   emailInternal: typeof emailInternal;
   http: typeof http;

@@ -2,7 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
-export const ROLES = ["admin", "pm", "department_lead", "member"] as const;
+export const ROLES = ["admin", "director", "pm", "department_lead", "member"] as const;
 export const DEPARTMENTS = ["it", "facility", "vyroba"] as const;
 export const PROJECT_DEPARTMENTS = ["it", "facility", "vyroba", "cross"] as const;
 export const PROJECT_STATUSES = ["planning", "active", "on_hold", "done", "archived"] as const;

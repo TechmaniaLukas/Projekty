@@ -1,4 +1,4 @@
-export type Role = "admin" | "pm" | "department_lead" | "member";
+export type Role = "admin" | "director" | "pm" | "department_lead" | "member";
 export type Department = "it" | "facility" | "vyroba";
 export type ProjectDepartment = Department | "cross";
 export type ProjectStatus = "planning" | "active" | "on_hold" | "done" | "archived";
@@ -7,6 +7,7 @@ export type Priority = "low" | "medium" | "high" | "critical";
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Vedoucí tech. odd.",
+  director: "Ředitel",
   pm: "Projektový manažer",
   department_lead: "Vedoucí oddělení",
   member: "Člen",
@@ -14,6 +15,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: "admin", label: ROLE_LABELS.admin },
+  { value: "director", label: ROLE_LABELS.director },
   { value: "pm", label: ROLE_LABELS.pm },
   { value: "department_lead", label: ROLE_LABELS.department_lead },
   { value: "member", label: ROLE_LABELS.member },
