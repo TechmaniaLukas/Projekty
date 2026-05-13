@@ -66,13 +66,16 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       if (args.existingUserId) return args.existingUserId;
       const email = args.profile.email as string | undefined;
       if (email) {
-        const existing = await ctx.db
+        // Convex Auth callback dostává generický db typ bez znalosti našich
+        // indexů, proto cast přes any. Index "email" je definovaný v schema.ts.
+        const db = ctx.db as any;
+        const existing = await db
           .query("users")
-          .withIndex("email", (q) => q.eq("email", email))
+          .withIndex("email", (q: any) => q.eq("email", email))
           .unique();
         if (existing) return existing._id;
       }
-      return await ctx.db.insert("users", {
+      return await ctx.db.insert("users" as any, {
         email,
         name: args.profile.name as string | undefined,
         image: args.profile.image as string | undefined,

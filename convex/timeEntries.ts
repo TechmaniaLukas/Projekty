@@ -279,15 +279,24 @@ export const listForProject = query({
     if (!project) return [];
     if (!(await canViewProject(ctx, me, project))) return [];
 
-    let q = ctx.db
+    const rows = await ctx.db
       .query("timeEntries")
       .withIndex("by_project_start", (q) => {
-        let qb = q.eq("projectId", args.projectId);
-        if (args.rangeStart !== undefined) qb = qb.gte("startTime", args.rangeStart);
-        if (args.rangeEnd !== undefined) qb = qb.lt("startTime", args.rangeEnd);
-        return qb;
-      });
-    const rows = await q.collect();
+        const base = q.eq("projectId", args.projectId);
+        if (args.rangeStart !== undefined && args.rangeEnd !== undefined) {
+          return base
+            .gte("startTime", args.rangeStart)
+            .lt("startTime", args.rangeEnd);
+        }
+        if (args.rangeStart !== undefined) {
+          return base.gte("startTime", args.rangeStart);
+        }
+        if (args.rangeEnd !== undefined) {
+          return base.lt("startTime", args.rangeEnd);
+        }
+        return base;
+      })
+      .collect();
     rows.sort((a, b) => a.startTime - b.startTime);
     return rows;
   },
@@ -308,10 +317,19 @@ export const projectSummary = query({
     const rows = await ctx.db
       .query("timeEntries")
       .withIndex("by_project_start", (q) => {
-        let qb = q.eq("projectId", args.projectId);
-        if (args.rangeStart !== undefined) qb = qb.gte("startTime", args.rangeStart);
-        if (args.rangeEnd !== undefined) qb = qb.lt("startTime", args.rangeEnd);
-        return qb;
+        const base = q.eq("projectId", args.projectId);
+        if (args.rangeStart !== undefined && args.rangeEnd !== undefined) {
+          return base
+            .gte("startTime", args.rangeStart)
+            .lt("startTime", args.rangeEnd);
+        }
+        if (args.rangeStart !== undefined) {
+          return base.gte("startTime", args.rangeStart);
+        }
+        if (args.rangeEnd !== undefined) {
+          return base.lt("startTime", args.rangeEnd);
+        }
+        return base;
       })
       .collect();
 

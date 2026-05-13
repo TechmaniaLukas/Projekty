@@ -362,10 +362,8 @@ export function TaskTree({ projectId, project }: Props) {
   );
 }
 
-interface DragHandleProps {
-  attributes: Record<string, unknown>;
-  listeners: Record<string, unknown> | undefined;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DragHandleProps = { attributes: any; listeners: any };
 
 interface SortableNodeProps {
   id: string;
