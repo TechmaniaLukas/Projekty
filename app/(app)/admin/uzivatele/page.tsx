@@ -72,7 +72,7 @@ export default function UsersAdminPage() {
                 await inviteUser({
                   email: inviteEmail.trim().toLowerCase(),
                   role: inviteRole,
-                  department: inviteRole === "admin" || inviteRole === "pm" ? undefined : (inviteDept || undefined),
+                  department: inviteRole === "admin" ? undefined : (inviteDept || undefined),
                   name: inviteName.trim() || undefined,
                 });
                 toast.success("Uživatel přidán", inviteEmail.trim().toLowerCase());
@@ -121,7 +121,7 @@ export default function UsersAdminPage() {
               <Select
                 value={inviteDept}
                 onChange={(e) => setInviteDept(e.target.value as Department | "")}
-                disabled={inviteRole === "admin" || inviteRole === "pm"}
+                disabled={inviteRole === "admin"}
               >
                 <option value="">—</option>
                 {DEPARTMENT_OPTIONS.map((o) => (
@@ -267,7 +267,7 @@ function UserRow({
                 : null,
             })
           }
-          disabled={busy || user.role === "admin" || user.role === "pm"}
+          disabled={busy || user.role === "admin"}
           className="min-w-[140px]"
         >
           <option value="">—</option>
