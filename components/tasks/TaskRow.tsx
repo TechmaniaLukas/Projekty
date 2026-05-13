@@ -85,11 +85,11 @@ export function TaskRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-2 border-b border-slate-100 px-2 py-2 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50",
+        "group flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 px-2 py-2 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50",
         task.status === "done" && "opacity-60",
         selected && "bg-blue-50 hover:bg-blue-50 dark:bg-blue-950/30 dark:hover:bg-blue-950/30",
       )}
-      style={{ paddingLeft: `${depth * 24 + 8}px` }}
+      style={{ paddingLeft: `${depth * 16 + 8}px` }}
     >
       {dragHandle ? (
         <button
@@ -135,17 +135,19 @@ export function TaskRow({
           title={canEdit ? "Označit jako hotovo" : "Bez oprávnění"}
         />
       )}
+      {/* Titulek — na mobilu zabírá zbytek řádku, na sm+ flex-1 */}
       <button
         type="button"
         onClick={onOpen}
         className={cn(
-          "flex-1 truncate text-left text-sm font-medium text-slate-900 hover:text-slate-700 dark:text-slate-100 dark:hover:text-slate-300",
+          "min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-900 hover:text-slate-700 dark:text-slate-100 dark:hover:text-slate-300",
           task.status === "done" && "line-through text-slate-500 dark:text-slate-500",
         )}
       >
         {task.title}
       </button>
-      <div className="flex shrink-0 items-center gap-2">
+      {/* Metadata blok — na mobilu zalomeno pod titulek (basis-full), na sm+ inline */}
+      <div className="flex shrink-0 basis-full items-center gap-1.5 pl-9 sm:basis-auto sm:gap-2 sm:pl-0">
         <PriorityBadge priority={task.priority} />
         {canEdit ? (
           <>
@@ -171,7 +173,7 @@ export function TaskRow({
         {task.deadline && (
           <span
             className={cn(
-              "hidden md:inline-block text-xs",
+              "text-xs whitespace-nowrap",
               overdue
                 ? "text-red-600 font-medium dark:text-red-400"
                 : soon
@@ -186,13 +188,13 @@ export function TaskRow({
           <Avatar name={assignee.name ?? null} email={assignee.email ?? null} size="sm" />
         )}
         {commentCount > 0 && (
-          <span className="hidden sm:inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
             <MessageSquare className="h-3.5 w-3.5" />
             {commentCount}
           </span>
         )}
         {attachmentCount > 0 && (
-          <span className="hidden sm:inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
             <Paperclip className="h-3.5 w-3.5" />
             {attachmentCount}
           </span>
@@ -206,11 +208,12 @@ export function TaskRow({
             {incompleteBlockers}
           </span>
         )}
+        {/* Akce — jen na desktopu, na mobilu úkol otevřeš tapnutím a editace v drawer */}
         {canAddSub && (
           <button
             type="button"
             onClick={onAddSub}
-            className="inline-flex md:hidden md:group-hover:inline-flex items-center rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+            className="hidden md:group-hover:inline-flex items-center rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
             title="Přidat podúkol"
             aria-label="Přidat podúkol"
           >
@@ -222,7 +225,7 @@ export function TaskRow({
             type="button"
             onClick={onDelete}
             disabled={busy}
-            className="inline-flex md:hidden md:group-hover:inline-flex items-center rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+            className="hidden md:group-hover:inline-flex items-center rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
             title="Smazat úkol"
             aria-label="Smazat úkol"
           >
