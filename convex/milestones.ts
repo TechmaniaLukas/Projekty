@@ -424,6 +424,37 @@ export const availableTasks = query({
   },
 });
 
+/**
+ * Přepočítá termín milníku na nejpozdější termín některého z navázaných úkolů.
+ * Pokud žádný úkol nemá deadline, nechá termín beze změny.
+ * Volá se po attach/detach a po změně deadline úkolu.
+ */
+export async function syncMilestoneDueDate(
+  ctx: { db: { query: any; patch: any; get: any } },
+  milestoneId: Id<"milestones">,
+): Promise<void> {
+  const milestone = await ctx.db.get(milestoneId);
+  if (!milestone) return;
+  // Schválený milník nepřepisujeme — historický záznam.
+  if (milestone.status === "approved") return;
+
+  const tasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_milestone", (q: any) => q.eq("milestoneId", milestoneId))
+    .collect();
+
+  const deadlines = tasks
+    .map((t: Doc<"tasks">) => t.deadline)
+    .filter((d: number | undefined): d is number => typeof d === "number");
+
+  if (deadlines.length === 0) return;
+
+  const latest = Math.max(...deadlines);
+  if (latest !== milestone.dueDate) {
+    await ctx.db.patch(milestoneId, { dueDate: latest });
+  }
+}
+
 function assertMilestoneEditable(milestone: Doc<"milestones">) {
   if (milestone.status === "submitted" || milestone.status === "approved") {
     throw new ConvexError(
@@ -460,6 +491,7 @@ export const attachTask = mutation({
     }
 
     await ctx.db.patch(args.taskId, { milestoneId: args.milestoneId });
+    await syncMilestoneDueDate(ctx, args.milestoneId);
     await logAction(ctx, {
       actor: me,
       action: "milestone.attach_task",
@@ -491,6 +523,7 @@ export const detachTask = mutation({
     assertMilestoneEditable(milestone);
 
     await ctx.db.patch(args.taskId, { milestoneId: undefined });
+    await syncMilestoneDueDate(ctx, milestone._id);
     await logAction(ctx, {
       actor: me,
       action: "milestone.detach_task",

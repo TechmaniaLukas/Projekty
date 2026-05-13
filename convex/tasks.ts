@@ -11,6 +11,7 @@ import {
 import { emit, actorName } from "./lib/notify";
 import { logAction } from "./lib/audit";
 import { propagateDeadlineChange } from "./lib/scheduling";
+import { syncMilestoneDueDate } from "./milestones";
 import { TASK_STATUS_LABELS } from "./constants";
 import { TASK_STATUSES, PRIORITIES } from "./schema";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -288,6 +289,10 @@ export const update = mutation({
       (args.deadline === null ? undefined : args.deadline) !== task.deadline;
     if (deadlineChanged) {
       await propagateDeadlineChange(ctx, args.taskId);
+      // Pokud je úkol navázaný na milník, přepočítej jeho termín.
+      if (task.milestoneId) {
+        await syncMilestoneDueDate(ctx, task.milestoneId);
+      }
     }
 
     if (Object.keys(patch).length > 0) {
@@ -451,6 +456,15 @@ export const remove = mutation({
       for (const te of tEntries) await ctx.db.patch(te._id, { taskId: undefined });
       await ctx.db.delete(id);
     }
+    // Po smazání úkolu(ů) přepočítej termíny milníků, na které byly navázány.
+    const affectedMilestoneIds = new Set<string>();
+    const allDeletedTasks = [task];
+    for (const t of allDeletedTasks) {
+      if (t.milestoneId) affectedMilestoneIds.add(t.milestoneId as string);
+    }
+    for (const mid of affectedMilestoneIds) {
+      await syncMilestoneDueDate(ctx, mid as Id<"milestones">);
+    }
   },
 });
 
@@ -513,6 +527,9 @@ export const bulkUpdate = mutation({
 
       if (args.deadline !== undefined) {
         await propagateDeadlineChange(ctx, taskId);
+        if (task.milestoneId) {
+          await syncMilestoneDueDate(ctx, task.milestoneId);
+        }
       }
 
       const newAssignee = args.assigneeId === null ? null : args.assigneeId;
