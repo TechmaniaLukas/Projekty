@@ -44,16 +44,32 @@ interface BarInfo {
   spanCols: number;
 }
 
+interface MilestoneMarker {
+  milestone: Doc<"milestones">;
+  date: Date;
+  col: number;
+}
+
+const MILESTONE_COLORS: Record<Doc<"milestones">["status"], string> = {
+  planned: "bg-slate-500",
+  in_progress: "bg-blue-600",
+  submitted: "bg-amber-500",
+  approved: "bg-green-600",
+  rejected: "bg-red-600",
+};
+
 export function ProjectGantt({ projectId, project }: Props) {
   const tasks = useQuery(api.tasks.listForProject, { projectId });
+  const milestones = useQuery(api.milestones.listForProject, { projectId });
 
   const data = useMemo(() => {
-    if (!tasks) return null;
+    if (!tasks || !milestones) return null;
 
     const tasksWithDates = tasks.filter((t) => t.deadline);
-    if (tasksWithDates.length === 0) {
+    if (tasksWithDates.length === 0 && milestones.length === 0) {
       return {
         bars: [],
+        milestoneMarkers: [],
         days: [],
         rangeStart: startOfDay(new Date()),
       };
@@ -68,6 +84,10 @@ export function ProjectGantt({ projectId, project }: Props) {
       const start = t.startDate ?? end - DEFAULT_DURATION_DAYS * 24 * 3600 * 1000;
       earliest = Math.min(earliest, start);
       latest = Math.max(latest, end);
+    }
+    for (const m of milestones) {
+      earliest = Math.min(earliest, m.dueDate);
+      latest = Math.max(latest, m.dueDate);
     }
     if (project.deadline) latest = Math.max(latest, project.deadline);
     if (project.startDate) earliest = Math.min(earliest, project.startDate);
@@ -99,22 +119,30 @@ export function ProjectGantt({ projectId, project }: Props) {
       })
       .sort((a, b) => a.start.getTime() - b.start.getTime() || a.task.title.localeCompare(b.task.title));
 
-    return { bars, days, rangeStart };
-  }, [tasks, project.deadline, project.startDate]);
+    const milestoneMarkers: MilestoneMarker[] = milestones
+      .map((m) => {
+        const date = new Date(m.dueDate);
+        const col = differenceInDays(date, rangeStart);
+        return { milestone: m, date, col };
+      })
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  if (tasks === undefined) {
+    return { bars, milestoneMarkers, days, rangeStart };
+  }, [tasks, milestones, project.deadline, project.startDate]);
+
+  if (tasks === undefined || milestones === undefined) {
     return <div className="text-sm text-slate-500 dark:text-slate-400">Načítám…</div>;
   }
   if (data === null) return null;
-  if (data.bars.length === 0) {
+  if (data.bars.length === 0 && data.milestoneMarkers.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-        Žádné úkoly s termínem. Přidej termíny v záložce „Úkoly".
+        Žádné úkoly ani milníky s termínem. Přidej termíny v záložce „Úkoly" nebo „Milníky".
       </div>
     );
   }
 
-  const { bars, days } = data;
+  const { bars, milestoneMarkers, days } = data;
   const today = startOfDay(new Date());
   const todayIdx = differenceInDays(today, data.rangeStart);
 
@@ -187,10 +215,44 @@ export function ProjectGantt({ projectId, project }: Props) {
               className="absolute top-0 z-0 w-px bg-blue-400"
               style={{
                 left: LABEL_WIDTH + todayIdx * COL_WIDTH + COL_WIDTH / 2,
-                height: bars.length * ROW_HEIGHT,
+                height: (bars.length + milestoneMarkers.length) * ROW_HEIGHT,
               }}
             />
           )}
+          {milestoneMarkers.map((m) => (
+            <div
+              key={m.milestone._id}
+              className="flex border-b border-slate-100 bg-amber-50/40 dark:border-slate-800 dark:bg-amber-950/10"
+              style={{ height: ROW_HEIGHT }}
+            >
+              <div
+                className="flex shrink-0 items-center gap-2 border-r border-slate-200 px-3 text-sm dark:border-slate-800"
+                style={{ width: LABEL_WIDTH }}
+                title={`Milník: ${m.milestone.title}`}
+              >
+                <span className="text-amber-500">◆</span>
+                <span className="truncate font-medium text-slate-700 dark:text-slate-300">
+                  {m.milestone.title}
+                </span>
+              </div>
+              <div className="relative flex-1">
+                {m.col >= 0 && m.col < days.length && (
+                  <div
+                    className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: m.col * COL_WIDTH + COL_WIDTH / 2 }}
+                    title={`${m.milestone.title}\n${format(m.date, "d. M. yyyy", { locale: cs })}`}
+                  >
+                    <div
+                      className={cn(
+                        "h-5 w-5 rotate-45 border-2 border-white shadow-sm dark:border-slate-900",
+                        MILESTONE_COLORS[m.milestone.status],
+                      )}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
           {bars.map((b, i) => {
             const status = b.task.status;
             return (

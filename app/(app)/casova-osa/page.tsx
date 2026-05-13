@@ -48,7 +48,19 @@ interface BarInfo {
   end: Date;
   startCol: number;
   spanCols: number;
+  milestones: Array<{
+    milestone: Doc<"milestones">;
+    col: number;
+  }>;
 }
+
+const MILESTONE_COLORS: Record<Doc<"milestones">["status"], string> = {
+  planned: "bg-slate-500",
+  in_progress: "bg-blue-700",
+  submitted: "bg-amber-500",
+  approved: "bg-green-600",
+  rejected: "bg-red-600",
+};
 
 export default function CasovaOsaPage() {
   const [deptFilter, setDeptFilter] = useState<ProjectDepartment | "">("");
@@ -59,6 +71,11 @@ export default function CasovaOsaPage() {
     status: statusFilter || undefined,
     includeArchived: false,
   });
+
+  const milestones = useQuery(
+    api.milestones.listForProjects,
+    projects ? { projectIds: projects.map((p) => p._id) } : "skip",
+  );
 
   const data = useMemo(() => {
     if (!projects) return null;
@@ -90,6 +107,13 @@ export default function CasovaOsaPage() {
     const days: Date[] = [];
     for (let i = 0; i < totalDays; i++) days.push(addDays(rangeStart, i));
 
+    const milestonesByProject = new Map<string, Doc<"milestones">[]>();
+    for (const m of milestones ?? []) {
+      const arr = milestonesByProject.get(m.projectId as string) ?? [];
+      arr.push(m);
+      milestonesByProject.set(m.projectId as string, arr);
+    }
+
     const bars: BarInfo[] = withDates
       .map((p) => {
         const end = new Date(p.deadline!);
@@ -102,12 +126,18 @@ export default function CasovaOsaPage() {
           differenceInDays(end, rangeStart),
         );
         const spanCols = Math.max(1, endCol - startCol + 1);
-        return { project: p, start, end, startCol, spanCols };
+        const projectMs = (milestonesByProject.get(p._id as string) ?? []).map(
+          (m) => ({
+            milestone: m,
+            col: differenceInDays(new Date(m.dueDate), rangeStart),
+          }),
+        );
+        return { project: p, start, end, startCol, spanCols, milestones: projectMs };
       })
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     return { bars, days, rangeStart };
-  }, [projects]);
+  }, [projects, milestones]);
 
   if (projects === undefined) {
     return <div className="text-sm text-slate-500 dark:text-slate-400">Načítám…</div>;
@@ -293,6 +323,21 @@ function Timeline({
                 >
                   {b.spanCols > 3 ? format(b.end, "d. M. yyyy") : ""}
                 </div>
+                {b.milestones.map((m) => (
+                  <div
+                    key={m.milestone._id}
+                    className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: m.col * COL_WIDTH + COL_WIDTH / 2 }}
+                    title={`◆ Milník: ${m.milestone.title}\n${format(new Date(m.milestone.dueDate), "d. M. yyyy", { locale: cs })}`}
+                  >
+                    <div
+                      className={cn(
+                        "h-4 w-4 rotate-45 border-2 border-white shadow-sm dark:border-slate-900",
+                        MILESTONE_COLORS[m.milestone.status],
+                      )}
+                    />
+                  </div>
+                ))}
               </div>
             </Link>
           ))}

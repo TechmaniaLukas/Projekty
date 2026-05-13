@@ -339,6 +339,29 @@ export const reject = mutation({
 });
 
 /**
+ * Milníky pro množinu projektů — pro overview obrazovky (časová osa).
+ * Vrací jen milníky z projektů, na které má uživatel view access.
+ */
+export const listForProjects = query({
+  args: { projectIds: v.array(v.id("projects")) },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const out: Doc<"milestones">[] = [];
+    for (const pid of args.projectIds) {
+      const project = await ctx.db.get(pid);
+      if (!project) continue;
+      if (!(await canViewProject(ctx, me, project))) continue;
+      const items = await ctx.db
+        .query("milestones")
+        .withIndex("by_project", (q) => q.eq("projectId", pid))
+        .collect();
+      out.push(...items);
+    }
+    return out;
+  },
+});
+
+/**
  * Pro daného uživatele: milníky čekající na jeho schválení.
  * Slouží jako "in-box" v dashboardu.
  */
