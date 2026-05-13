@@ -175,6 +175,13 @@ export const remove = mutation({
     if (!canManageMilestone(me, project)) {
       throw new ConvexError("Nemáte oprávnění smazat milník");
     }
+    const attached = await ctx.db
+      .query("tasks")
+      .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
+      .collect();
+    for (const t of attached) {
+      await ctx.db.patch(t._id, { milestoneId: undefined });
+    }
     await ctx.db.delete(args.milestoneId);
     await logAction(ctx, {
       actor: me,
@@ -205,6 +212,17 @@ export const submit = mutation({
     }
     if (milestone.status === "submitted") {
       throw new ConvexError("Milník už čeká na schválení");
+    }
+    // Gate: pokud jsou k milníku navázány úkoly, musí být všechny ve stavu „done"
+    const linkedTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
+      .collect();
+    const incomplete = linkedTasks.filter((t) => t.status !== "done");
+    if (incomplete.length > 0) {
+      throw new ConvexError(
+        `Milník nelze odeslat: ${incomplete.length} z ${linkedTasks.length} navázaných úkolů ještě není hotových.`,
+      );
     }
     await ctx.db.patch(args.milestoneId, {
       status: "submitted",
@@ -359,5 +377,127 @@ export const myPendingApprovals = query({
         ? (submitterById.get(m.submittedBy as string) ?? null)
         : null,
     }));
+  },
+});
+
+/**
+ * Úkoly přiřazené k milníku. Vyžaduje view access k projektu.
+ */
+export const listTasks = query({
+  args: { milestoneId: v.id("milestones") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) return [];
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!(await canViewProject(ctx, me, project))) return [];
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
+      .collect();
+    tasks.sort((a, b) => a.order - b.order);
+    return tasks;
+  },
+});
+
+/**
+ * Úkoly z projektu daného milníku, které ještě nejsou nikde přiřazené.
+ * Slouží jako zdroj pro picker.
+ */
+export const availableTasks = query({
+  args: { milestoneId: v.id("milestones") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) return [];
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!(await canViewProject(ctx, me, project))) return [];
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", milestone.projectId))
+      .collect();
+    return tasks
+      .filter((t) => !t.milestoneId)
+      .sort((a, b) => a.order - b.order);
+  },
+});
+
+function assertMilestoneEditable(milestone: Doc<"milestones">) {
+  if (milestone.status === "submitted" || milestone.status === "approved") {
+    throw new ConvexError(
+      "Milník byl odeslán/schválen. Pro úpravy obsahu jej vrať k přepracování (zamítnutí).",
+    );
+  }
+}
+
+export const attachTask = mutation({
+  args: {
+    milestoneId: v.id("milestones"),
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) throw new ConvexError("Milník nenalezen");
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!canManageMilestone(me, project)) {
+      throw new ConvexError("Nemáte oprávnění upravit milník");
+    }
+    assertMilestoneEditable(milestone);
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new ConvexError("Úkol nenalezen");
+    if (task.projectId !== milestone.projectId) {
+      throw new ConvexError("Úkol patří do jiného projektu");
+    }
+    if (task.milestoneId === args.milestoneId) return;
+    if (task.milestoneId) {
+      throw new ConvexError(
+        "Úkol je už přiřazený k jinému milníku — nejdřív jej odpoj.",
+      );
+    }
+
+    await ctx.db.patch(args.taskId, { milestoneId: args.milestoneId });
+    await logAction(ctx, {
+      actor: me,
+      action: "milestone.attach_task",
+      entityType: "milestone",
+      entityId: args.milestoneId,
+      projectId: milestone.projectId,
+      summary: `Připojil úkol „${task.title}" k milníku „${milestone.title}"`,
+    });
+  },
+});
+
+export const detachTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new ConvexError("Úkol nenalezen");
+    if (!task.milestoneId) return;
+    const milestone = await ctx.db.get(task.milestoneId);
+    if (!milestone) {
+      // Stará reference na smazaný milník — jen vyčisti.
+      await ctx.db.patch(args.taskId, { milestoneId: undefined });
+      return;
+    }
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!canManageMilestone(me, project)) {
+      throw new ConvexError("Nemáte oprávnění upravit milník");
+    }
+    assertMilestoneEditable(milestone);
+
+    await ctx.db.patch(args.taskId, { milestoneId: undefined });
+    await logAction(ctx, {
+      actor: me,
+      action: "milestone.detach_task",
+      entityType: "milestone",
+      entityId: milestone._id,
+      projectId: milestone.projectId,
+      summary: `Odpojil úkol „${task.title}" od milníku „${milestone.title}"`,
+    });
   },
 });

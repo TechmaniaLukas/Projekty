@@ -8,10 +8,12 @@ import {
   CircleDot,
   Clock,
   Crown,
+  ListChecks,
   Pencil,
   Plus,
   Send,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -28,6 +30,23 @@ import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 type Milestone = Doc<"milestones">;
+type Task = Doc<"tasks">;
+
+const TASK_STATUS_LABEL: Record<Task["status"], string> = {
+  todo: "K udělání",
+  in_progress: "Probíhá",
+  blocked: "Blokováno",
+  review: "Kontrola",
+  done: "Hotovo",
+};
+
+const TASK_STATUS_TONE: Record<Task["status"], string> = {
+  todo: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200",
+  blocked: "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200",
+  review: "bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-200",
+  done: "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200",
+};
 
 interface Props {
   projectId: Id<"projects">;
@@ -340,6 +359,15 @@ function MilestoneRow({
             </div>
           )}
 
+          <MilestoneTasks
+            milestoneId={milestone._id}
+            canEdit={
+              canManage &&
+              milestone.status !== "submitted" &&
+              milestone.status !== "approved"
+            }
+          />
+
           {/* Akce */}
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             {(milestone.status === "planned" ||
@@ -563,6 +591,167 @@ function MilestoneFormDialog({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MilestoneTasks({
+  milestoneId,
+  canEdit,
+}: {
+  milestoneId: Id<"milestones">;
+  canEdit: boolean;
+}) {
+  const attached = useQuery(api.milestones.listTasks, { milestoneId });
+  const available = useQuery(
+    api.milestones.availableTasks,
+    canEdit ? { milestoneId } : "skip",
+  );
+  const attach = useMutation(api.milestones.attachTask);
+  const detach = useMutation(api.milestones.detachTask);
+  const toast = useToast();
+  const [showPicker, setShowPicker] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (attached === undefined) return null;
+
+  const doneCount = attached.filter((t) => t.status === "done").length;
+
+  async function onAttach(taskId: Id<"tasks">) {
+    setBusy(true);
+    try {
+      await attach({ milestoneId, taskId });
+      toast.success("Úkol připojen");
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDetach(taskId: Id<"tasks">) {
+    setBusy(true);
+    try {
+      await detach({ taskId });
+      toast.success("Úkol odpojen");
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+          <ListChecks className="h-3.5 w-3.5 text-slate-400" />
+          Úkoly
+          <span className="text-slate-400 dark:text-slate-500">
+            ({doneCount}/{attached.length})
+          </span>
+        </div>
+        {canEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowPicker((v) => !v)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {showPicker ? "Zavřít" : "Přiřadit úkol"}
+          </Button>
+        )}
+      </div>
+
+      {attached.length === 0 ? (
+        <div className="text-xs italic text-slate-500 dark:text-slate-400">
+          Zatím žádné úkoly. {canEdit && "Přiřaď libovolné úkoly projektu."}
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {attached.map((t) => (
+            <li
+              key={t._id}
+              className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-800"
+            >
+              <span
+                className={cn(
+                  "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  TASK_STATUS_TONE[t.status],
+                )}
+              >
+                {TASK_STATUS_LABEL[t.status]}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200",
+                  t.status === "done" && "line-through text-slate-500",
+                )}
+              >
+                {t.title}
+              </span>
+              {t.deadline && (
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                  {formatDate(t.deadline)}
+                </span>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onDetach(t._id)}
+                  disabled={busy}
+                  className="rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                  title="Odpojit od milníku"
+                  aria-label="Odpojit úkol od milníku"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showPicker && canEdit && (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900/50">
+          {available === undefined ? (
+            <div className="text-xs text-slate-500">Načítám…</div>
+          ) : available.length === 0 ? (
+            <div className="text-xs italic text-slate-500 dark:text-slate-400">
+              Žádné volné úkoly v projektu. Vytvoř úkol nebo odpoj jiný milník.
+            </div>
+          ) : (
+            <ul className="max-h-48 space-y-1 overflow-y-auto">
+              {available.map((t) => (
+                <li
+                  key={t._id}
+                  className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-white dark:hover:bg-slate-800"
+                >
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                      TASK_STATUS_TONE[t.status],
+                    )}
+                  >
+                    {TASK_STATUS_LABEL[t.status]}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+                    {t.title}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onAttach(t._id)}
+                    disabled={busy}
+                    className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                  >
+                    Přidat
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

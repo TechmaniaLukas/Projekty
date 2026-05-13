@@ -70,6 +70,7 @@ export default defineSchema({
   tasks: defineTable({
     projectId: v.id("projects"),
     parentTaskId: v.optional(v.id("tasks")),
+    milestoneId: v.optional(v.id("milestones")),
     title: v.string(),
     description: v.optional(v.string()),
     assigneeId: v.optional(v.id("users")),
@@ -84,6 +85,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_assignee", ["assigneeId"])
     .index("by_parent", ["parentTaskId"])
+    .index("by_milestone", ["milestoneId"])
     .index("by_project_and_status", ["projectId", "status"])
     .index("by_deadline", ["deadline"])
     .searchIndex("search_title", {
