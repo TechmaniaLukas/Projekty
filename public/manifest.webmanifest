@@ -1,0 +1,19 @@
+{
+  "name": "Techmania Projekty",
+  "short_name": "TM Projekty",
+  "description": "Správa projektů technického oddělení Techmania Science Center",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "lang": "cs",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
