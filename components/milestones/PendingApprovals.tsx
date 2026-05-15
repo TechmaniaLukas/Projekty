@@ -62,6 +62,19 @@ export function PendingApprovals() {
                       {formatDate(m.dueDate)}
                     </span>
                   </div>
+                  {m.taskStats && m.taskStats.total > 0 && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                          className="h-full bg-blue-500"
+                          style={{ width: `${m.taskStats.percent ?? 0}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {m.taskStats.done}/{m.taskStats.total}
+                      </span>
+                    </div>
+                  )}
                   {m.submitNote && (
                     <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
                       „{m.submitNote}"

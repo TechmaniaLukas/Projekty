@@ -234,6 +234,12 @@ export function ProjectGantt({ projectId, project }: Props) {
                 <span className="truncate font-medium text-slate-700 dark:text-slate-300">
                   {m.milestone.title}
                 </span>
+                {(m.milestone as { taskStats?: { total: number; percent: number | null } }).taskStats &&
+                  ((m.milestone as { taskStats?: { total: number } }).taskStats?.total ?? 0) > 0 && (
+                    <span className="ml-auto shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
+                      {(m.milestone as { taskStats?: { percent: number | null } }).taskStats?.percent}%
+                    </span>
+                  )}
               </div>
               <div className="relative flex-1">
                 {m.col >= 0 && m.col < days.length && (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useState } from "react";
-import { ChevronLeft, Settings, Archive, ArchiveRestore } from "lucide-react";
+import { ChevronLeft, Settings, Archive, ArchiveRestore, FileText } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -115,6 +115,12 @@ export default function ProjectDetailPage({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href={`/projekty/${project._id}/report`}>
+            <Button variant="outline" size="sm">
+              <FileText className="h-3.5 w-3.5" />
+              Report
+            </Button>
+          </Link>
           <ExportButton project={project} />
           {canEdit && (
             <Link href={`/projekty/${project._id}/nastaveni`}>

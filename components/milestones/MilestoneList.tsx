@@ -29,7 +29,8 @@ import { useToast } from "@/components/ui/toast";
 import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
-type Milestone = Doc<"milestones">;
+type TaskStats = { total: number; done: number; percent: number | null };
+type Milestone = Doc<"milestones"> & { taskStats?: TaskStats };
 type Task = Doc<"tasks">;
 
 const TASK_STATUS_LABEL: Record<Task["status"], string> = {
@@ -334,6 +335,31 @@ function MilestoneRow({
               )}
             </div>
           </div>
+
+          {milestone.taskStats && milestone.taskStats.total > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400">
+                  Navázané úkoly
+                </span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {milestone.taskStats.done}/{milestone.taskStats.total} hotovo (
+                  {milestone.taskStats.percent}%)
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <div
+                  className={cn(
+                    "h-full transition-all",
+                    milestone.taskStats.percent === 100
+                      ? "bg-green-500"
+                      : "bg-blue-500",
+                  )}
+                  style={{ width: `${milestone.taskStats.percent ?? 0}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {milestone.status === "submitted" && milestone.submitNote && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs dark:border-amber-900 dark:bg-amber-950/30">

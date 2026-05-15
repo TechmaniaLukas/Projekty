@@ -91,6 +91,147 @@ export const get = query({
   },
 });
 
+/**
+ * Agregovaný stavový report projektu pro PDF / poradu vedení.
+ */
+export const report = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return null;
+    if (!(await canViewProject(ctx, me, project))) return null;
+
+    const now = Date.now();
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const milestones = await ctx.db
+      .query("milestones")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const owner = project.ownerId ? await ctx.db.get(project.ownerId) : null;
+
+    const totalTasks = tasks.length;
+    const doneTasks = tasks.filter((t) => t.status === "done").length;
+    const progressPercent =
+      totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+    const byStatus: Record<string, number> = {
+      todo: 0,
+      in_progress: 0,
+      blocked: 0,
+      review: 0,
+      done: 0,
+    };
+    for (const t of tasks) byStatus[t.status] = (byStatus[t.status] ?? 0) + 1;
+
+    // Prošlé úkoly
+    const overdueTasks = tasks
+      .filter(
+        (t) =>
+          t.deadline &&
+          t.deadline < now &&
+          t.status !== "done",
+      )
+      .sort((a, b) => (a.deadline ?? 0) - (b.deadline ?? 0));
+
+    // Rizika: blokované úkoly + zamítnuté milníky + prošlé milníky
+    const blockedTasks = tasks.filter((t) => t.status === "blocked");
+    const rejectedMilestones = milestones.filter(
+      (m) => m.status === "rejected",
+    );
+    const overdueMilestones = milestones.filter(
+      (m) =>
+        m.dueDate < now &&
+        m.status !== "approved",
+    );
+
+    // Assignee jména pro prošlé úkoly
+    const assigneeIds = Array.from(
+      new Set(
+        overdueTasks
+          .map((t) => t.assigneeId as string | undefined)
+          .filter((x): x is string => !!x),
+      ),
+    );
+    const assignees = await Promise.all(
+      assigneeIds.map((id) => ctx.db.get(id as typeof project.ownerId)),
+    );
+    const assigneeName = new Map<string, string>();
+    for (const a of assignees) {
+      if (a) assigneeName.set(a._id as string, a.name ?? a.email ?? "—");
+    }
+
+    const milestoneSummary = milestones
+      .slice()
+      .sort((a, b) => a.order - b.order || a.dueDate - b.dueDate)
+      .map((m) => {
+        const linked = tasks.filter((t) => t.milestoneId === m._id);
+        const d = linked.filter((t) => t.status === "done").length;
+        return {
+          _id: m._id,
+          title: m.title,
+          status: m.status,
+          dueDate: m.dueDate,
+          taskTotal: linked.length,
+          taskDone: d,
+          percent:
+            linked.length > 0 ? Math.round((d / linked.length) * 100) : null,
+        };
+      });
+
+    return {
+      generatedAt: now,
+      project: {
+        name: project.name,
+        description: project.description ?? null,
+        department: project.department,
+        status: project.status,
+        priority: project.priority,
+        deadline: project.deadline ?? null,
+        startDate: project.startDate ?? null,
+        ownerName: owner?.name ?? owner?.email ?? null,
+      },
+      progress: {
+        totalTasks,
+        doneTasks,
+        progressPercent,
+        byStatus,
+      },
+      milestones: milestoneSummary,
+      overdueTasks: overdueTasks.map((t) => ({
+        _id: t._id,
+        title: t.title,
+        deadline: t.deadline ?? 0,
+        status: t.status,
+        assignee: t.assigneeId
+          ? (assigneeName.get(t.assigneeId as string) ?? "—")
+          : null,
+      })),
+      risks: {
+        blockedTasks: blockedTasks.map((t) => ({
+          _id: t._id,
+          title: t.title,
+        })),
+        rejectedMilestones: rejectedMilestones.map((m) => ({
+          _id: m._id,
+          title: m.title,
+          reason: m.rejectionReason ?? null,
+        })),
+        overdueMilestones: overdueMilestones.map((m) => ({
+          _id: m._id,
+          title: m.title,
+          dueDate: m.dueDate,
+        })),
+      },
+    };
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),

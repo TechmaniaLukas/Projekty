@@ -60,7 +60,27 @@ export const listForProject = query({
       .collect();
 
     items.sort((a, b) => a.order - b.order || a.dueDate - b.dueDate);
-    return items;
+
+    // Progres z navázaných úkolů
+    const allTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    return items.map((m) => {
+      const linked = allTasks.filter((t) => t.milestoneId === m._id);
+      const done = linked.filter((t) => t.status === "done").length;
+      return {
+        ...m,
+        taskStats: {
+          total: linked.length,
+          done,
+          percent:
+            linked.length > 0
+              ? Math.round((done / linked.length) * 100)
+              : null,
+        },
+      };
+    });
   },
 });
 
@@ -426,13 +446,30 @@ export const myPendingApprovals = query({
     const submitterById = new Map<string, Doc<"users">>();
     for (const u of submitters) if (u) submitterById.set(u._id as string, u);
 
-    return items.map((m) => ({
-      ...m,
-      project: projectById.get(m.projectId as string) ?? null,
-      submitter: m.submittedBy
-        ? (submitterById.get(m.submittedBy as string) ?? null)
-        : null,
-    }));
+    const result = [];
+    for (const m of items) {
+      const linked = await ctx.db
+        .query("tasks")
+        .withIndex("by_milestone", (q) => q.eq("milestoneId", m._id))
+        .collect();
+      const done = linked.filter((t) => t.status === "done").length;
+      result.push({
+        ...m,
+        project: projectById.get(m.projectId as string) ?? null,
+        submitter: m.submittedBy
+          ? (submitterById.get(m.submittedBy as string) ?? null)
+          : null,
+        taskStats: {
+          total: linked.length,
+          done,
+          percent:
+            linked.length > 0
+              ? Math.round((done / linked.length) * 100)
+              : null,
+        },
+      });
+    }
+    return result;
   },
 });
 

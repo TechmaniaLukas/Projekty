@@ -19,7 +19,7 @@ export function Navbar({ onMobileMenu, onSearch }: Props) {
   const { signOut } = useAuthActions();
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6 dark:border-slate-800 dark:bg-slate-900">
+    <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6 dark:border-slate-800 dark:bg-slate-900 print:hidden">
       <div className="flex items-center gap-1 min-w-0 md:hidden">
         <button
           type="button"

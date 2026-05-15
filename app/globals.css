@@ -23,3 +23,20 @@ html.dark {
 body {
   font-family: var(--font-sans);
 }
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  /* Sidebar skrýt při tisku (Navbar má print:hidden přes Tailwind) */
+  aside {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}
