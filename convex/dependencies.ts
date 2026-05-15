@@ -79,6 +79,48 @@ export const listForTask = query({
   },
 });
 
+/**
+ * Všechny závislosti mezi úkoly v rámci jednoho projektu (pro Gantt šipky).
+ * Vrací páry blocking → blocked, kde oba úkoly patří do projektu.
+ */
+export const listForProject = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return [];
+    if (!(await canViewProject(ctx, me, project))) return [];
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const taskIds = new Set(tasks.map((t) => t._id as string));
+    if (taskIds.size === 0) return [];
+
+    const seen = new Set<string>();
+    const pairs: { blockingTaskId: Id<"tasks">; blockedTaskId: Id<"tasks"> }[] =
+      [];
+    for (const t of tasks) {
+      const rows = await ctx.db
+        .query("taskDependencies")
+        .withIndex("by_blocking", (q) => q.eq("blockingTaskId", t._id))
+        .collect();
+      for (const r of rows) {
+        if (!taskIds.has(r.blockedTaskId as string)) continue;
+        const key = `${r.blockingTaskId}->${r.blockedTaskId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        pairs.push({
+          blockingTaskId: r.blockingTaskId,
+          blockedTaskId: r.blockedTaskId,
+        });
+      }
+    }
+    return pairs;
+  },
+});
+
 export const earliestStartHint = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {

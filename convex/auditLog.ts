@@ -17,6 +17,7 @@ export const list = query({
         v.literal("dependency"),
         v.literal("attachment"),
         v.literal("template"),
+        v.literal("milestone"),
       ),
     ),
     projectId: v.optional(v.id("projects")),

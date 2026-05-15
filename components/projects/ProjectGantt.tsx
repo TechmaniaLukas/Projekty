@@ -61,6 +61,7 @@ const MILESTONE_COLORS: Record<Doc<"milestones">["status"], string> = {
 export function ProjectGantt({ projectId, project }: Props) {
   const tasks = useQuery(api.tasks.listForProject, { projectId });
   const milestones = useQuery(api.milestones.listForProject, { projectId });
+  const deps = useQuery(api.dependencies.listForProject, { projectId });
 
   const data = useMemo(() => {
     if (!tasks || !milestones) return null;
@@ -158,6 +159,34 @@ export function ProjectGantt({ projectId, project }: Props) {
     else acc.push({ label, span: 1 });
     return acc;
   }, []);
+
+  // Šipky závislostí mezi úkoly (blocking → blocked)
+  const barByTaskId = new Map<
+    string,
+    { startCol: number; spanCols: number; rowIdx: number }
+  >();
+  bars.forEach((b, i) => {
+    barByTaskId.set(b.task._id as string, {
+      startCol: b.startCol,
+      spanCols: b.spanCols,
+      rowIdx: milestoneMarkers.length + i,
+    });
+  });
+  const depLines: { d: string }[] = [];
+  for (const dep of deps ?? []) {
+    const from = barByTaskId.get(dep.blockingTaskId as string);
+    const to = barByTaskId.get(dep.blockedTaskId as string);
+    if (!from || !to) continue;
+    const x1 =
+      LABEL_WIDTH + (from.startCol + from.spanCols) * COL_WIDTH - 4;
+    const y1 = from.rowIdx * ROW_HEIGHT + ROW_HEIGHT / 2;
+    const x2 = LABEL_WIDTH + to.startCol * COL_WIDTH;
+    const y2 = to.rowIdx * ROW_HEIGHT + ROW_HEIGHT / 2;
+    const midX = Math.max(x1 + 8, x2 - 12);
+    depLines.push({
+      d: `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`,
+    });
+  }
 
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -302,6 +331,40 @@ export function ProjectGantt({ projectId, project }: Props) {
               </div>
             );
           })}
+          {depLines.length > 0 && (
+            <svg
+              className="pointer-events-none absolute left-0 top-0 z-20"
+              width={LABEL_WIDTH + days.length * COL_WIDTH}
+              height={
+                (bars.length + milestoneMarkers.length) * ROW_HEIGHT
+              }
+            >
+              <defs>
+                <marker
+                  id="gantt-arrow"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" className="fill-slate-400" />
+                </marker>
+              </defs>
+              {depLines.map((l, idx) => (
+                <path
+                  key={idx}
+                  d={l.d}
+                  fill="none"
+                  className="stroke-slate-400"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  markerEnd="url(#gantt-arrow)"
+                />
+              ))}
+            </svg>
+          )}
         </div>
       </div>
     </div>

@@ -35,6 +35,7 @@ import type * as tasks from "../tasks.js";
 import type * as templates from "../templates.js";
 import type * as timeEntries from "../timeEntries.js";
 import type * as timeReminders from "../timeReminders.js";
+import type * as timesheets from "../timesheets.js";
 import type * as users from "../users.js";
 import type * as watchers from "../watchers.js";
 
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   templates: typeof templates;
   timeEntries: typeof timeEntries;
   timeReminders: typeof timeReminders;
+  timesheets: typeof timesheets;
   users: typeof users;
   watchers: typeof watchers;
 }>;

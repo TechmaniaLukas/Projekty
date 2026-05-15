@@ -202,6 +202,26 @@ export default defineSchema({
     .index("by_approver_and_status", ["approverId", "status"])
     .index("by_due", ["dueDate"]),
 
+  timesheetSubmissions: defineTable({
+    userId: v.id("users"),
+    periodStart: v.number(), // pondělí 00:00 daného týdne
+    periodEnd: v.number(), // +7 dní
+    status: v.union(
+      v.literal("submitted"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    totalHours: v.number(), // snapshot při odeslání
+    submittedAt: v.number(),
+    decidedBy: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    rejectionReason: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_period", ["userId", "periodStart"])
+    .index("by_status", ["status"])
+    .index("by_status_period", ["status", "periodStart"]),
+
   milestoneDependencies: defineTable({
     blockingMilestoneId: v.id("milestones"),
     blockedMilestoneId: v.id("milestones"),

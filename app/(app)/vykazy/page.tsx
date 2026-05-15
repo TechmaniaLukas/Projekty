@@ -47,6 +47,7 @@ export default function VykazyPage() {
     projects ? { projectIds: projects.map((p) => p._id) } : "skip",
   );
   const remove = useMutation(api.timeEntries.remove);
+  const submitWeek = useMutation(api.timesheets.submitWeek);
   const toast = useToast();
 
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
@@ -62,6 +63,10 @@ export default function VykazyPage() {
   const entries = useQuery(api.timeEntries.listForUserRange, {
     rangeStart: weekStart.getTime(),
     rangeEnd: weekEnd.getTime(),
+  });
+
+  const submission = useQuery(api.timesheets.statusForWeek, {
+    periodStart: weekStart.getTime(),
   });
 
   const projectsById = useMemo(() => {
@@ -155,6 +160,56 @@ export default function VykazyPage() {
             </Link>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
+        <div className="text-sm">
+          {!submission && (
+            <span className="text-slate-500 dark:text-slate-400">
+              Tento týden zatím nebyl odeslán ke schválení.
+            </span>
+          )}
+          {submission?.status === "submitted" && (
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              ⏳ Odesláno ke schválení ({formatHours(submission.totalHours)} h)
+            </span>
+          )}
+          {submission?.status === "approved" && (
+            <span className="font-medium text-green-700 dark:text-green-400">
+              ✓ Schváleno ({formatHours(submission.totalHours)} h)
+            </span>
+          )}
+          {submission?.status === "rejected" && (
+            <span className="font-medium text-red-700 dark:text-red-400">
+              ⚠ Vráceno k přepracování
+              {submission.rejectionReason
+                ? `: ${submission.rejectionReason}`
+                : ""}
+            </span>
+          )}
+        </div>
+        {submission?.status !== "submitted" &&
+          submission?.status !== "approved" && (
+            <Button
+              size="sm"
+              onClick={async () => {
+                try {
+                  await submitWeek({
+                    periodStart: weekStart.getTime(),
+                    periodEnd: weekEnd.getTime(),
+                  });
+                  toast.success("Výkaz odeslán ke schválení");
+                } catch (err) {
+                  toast.error(
+                    "Nelze odeslat",
+                    err instanceof Error ? err.message : "",
+                  );
+                }
+              }}
+            >
+              Odeslat ke schválení
+            </Button>
+          )}
       </div>
 
       <Card>

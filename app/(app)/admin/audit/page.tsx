@@ -13,6 +13,8 @@ import {
   Link2,
   Paperclip,
   BookTemplate,
+  Flag,
+  Download,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -20,7 +22,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { relativeTime, formatDateTime } from "@/lib/dates";
+import { toCsv, downloadCsv, safeFilename } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
 type EntityType =
@@ -30,7 +34,8 @@ type EntityType =
   | "user"
   | "dependency"
   | "attachment"
-  | "template";
+  | "template"
+  | "milestone";
 
 const ICONS: Record<EntityType, React.ComponentType<{ className?: string }>> = {
   project: FolderKanban,
@@ -40,6 +45,7 @@ const ICONS: Record<EntityType, React.ComponentType<{ className?: string }>> = {
   dependency: Link2,
   attachment: Paperclip,
   template: BookTemplate,
+  milestone: Flag,
 };
 
 const ENTITY_LABEL: Record<EntityType, string> = {
@@ -50,6 +56,7 @@ const ENTITY_LABEL: Record<EntityType, string> = {
   dependency: "Závislost",
   attachment: "Příloha",
   template: "Šablona",
+  milestone: "Milník",
 };
 
 const ENTITY_TONES: Record<EntityType, string> = {
@@ -60,6 +67,7 @@ const ENTITY_TONES: Record<EntityType, string> = {
   dependency: "bg-pink-100 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300",
   attachment: "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300",
   template: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+  milestone: "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300",
 };
 
 export default function AuditPage() {
@@ -125,6 +133,37 @@ export default function AuditPage() {
               </option>
             ))}
           </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!entries || entries.length === 0}
+            onClick={() => {
+              if (!entries) return;
+              const headers = [
+                "Čas",
+                "Uživatel",
+                "E-mail",
+                "Entita",
+                "Akce",
+                "Souhrn",
+              ];
+              const rows = entries.map((e) => [
+                formatDateTime(e._creationTime),
+                e.actor?.name ?? "—",
+                e.actor?.email ?? "",
+                ENTITY_LABEL[e.entityType as EntityType] ?? e.entityType,
+                e.action,
+                e.summary,
+              ]);
+              downloadCsv(
+                `audit-log-${safeFilename(new Date().toISOString().slice(0, 10))}.csv`,
+                toCsv(headers, rows),
+              );
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
