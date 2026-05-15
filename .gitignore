@@ -39,6 +39,11 @@ yarn-error.log*
 # Claude Code (lokální preview/launch konfigurace)
 .claude/
 
+# Convex zálohy (obsahují produkční data — NIKDY do gitu)
+backup-*.zip
+backup-check/
+*.snapshot.zip
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
