@@ -26,9 +26,11 @@ export default function UsersAdminPage() {
   const updateUser = useMutation(api.users.updateUser);
   const inviteUser = useMutation(api.users.inviteUser);
   const seed = useMutation(api.seed.seedDevData);
+  const purge = useMutation(api.seed.purgeDevData);
   const toast = useToast();
 
   const [seedBusy, setSeedBusy] = useState(false);
+  const [purgeBusy, setPurgeBusy] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -176,35 +178,78 @@ export default function UsersAdminPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Dev nástroje</CardTitle>
+          <CardTitle>Správa ukázkových dat</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Naplň databázi testovacími daty: 5 uživatelů (PM, 3 vedoucí, 1 člen) a 3
-            ukázkové projekty s úkoly.
-          </p>
-          <div className="flex items-center gap-3">
+        <CardContent className="space-y-4">
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
+            <p className="text-sm text-red-800 dark:text-red-300">
+              <strong>Smazat ukázková data.</strong> Odstraní 5 testovacích účtů
+              (<code>+test@techmania.cz</code>), 3 ukázkové projekty a 3 šablony
+              včetně všech jejich úkolů, milníků a komentářů. Reálná data
+              zůstanou nedotčená. Akce je nevratná.
+            </p>
             <Button
               variant="outline"
-              disabled={seedBusy}
+              disabled={purgeBusy}
+              className="mt-3 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
               onClick={async () => {
-                setSeedBusy(true);
+                if (
+                  !confirm(
+                    "Opravdu smazat všechna ukázková data? Tato akce je nevratná.",
+                  )
+                )
+                  return;
+                setPurgeBusy(true);
                 try {
-                  await seed({});
-                  toast.success("Dev data nasypána", "5 uživatelů a 3 projekty");
+                  const r = await purge({});
+                  toast.success(
+                    "Ukázková data smazána",
+                    `${r.deletedProjects} projektů, ${r.deletedTasks} úkolů, ${r.deletedUsers} účtů`,
+                  );
                 } catch (err) {
                   toast.error(
-                    "Seed selhal",
+                    "Mazání selhalo",
                     err instanceof Error ? err.message : "Chyba",
                   );
                 } finally {
-                  setSeedBusy(false);
+                  setPurgeBusy(false);
                 }
               }}
             >
-              {seedBusy ? "Seedu ji…" : "Naseedovat dev data"}
+              {purgeBusy ? "Mažu…" : "Smazat ukázková data"}
             </Button>
           </div>
+
+          <details className="text-sm text-slate-500 dark:text-slate-400">
+            <summary className="cursor-pointer select-none">
+              Naplnit ukázkovými daty (jen pro testování)
+            </summary>
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                disabled={seedBusy}
+                onClick={async () => {
+                  setSeedBusy(true);
+                  try {
+                    await seed({});
+                    toast.success(
+                      "Dev data nasypána",
+                      "5 uživatelů a 3 projekty",
+                    );
+                  } catch (err) {
+                    toast.error(
+                      "Seed selhal",
+                      err instanceof Error ? err.message : "Chyba",
+                    );
+                  } finally {
+                    setSeedBusy(false);
+                  }
+                }}
+              >
+                {seedBusy ? "Seeduji…" : "Naseedovat dev data"}
+              </Button>
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>
