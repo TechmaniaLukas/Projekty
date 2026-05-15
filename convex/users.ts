@@ -163,7 +163,7 @@ export const inviteUser = mutation({
 export const mergeDuplicateByEmail = mutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    // No auth check: jednorázová administrativní úloha spouštěná z CLI.
+    await requireRole(ctx, ["admin"]);
     const all = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", args.email))

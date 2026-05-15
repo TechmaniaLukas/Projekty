@@ -368,6 +368,14 @@ function MilestoneRow({
             }
           />
 
+          <MilestoneDependencies
+            milestoneId={milestone._id}
+            projectId={milestone.projectId}
+            canEdit={canManage}
+          />
+
+          <MilestoneComments milestoneId={milestone._id} me={me} />
+
           {/* Akce */}
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             {(milestone.status === "planned" ||
@@ -752,6 +760,253 @@ function MilestoneTasks({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function MilestoneDependencies({
+  milestoneId,
+  projectId,
+  canEdit,
+}: {
+  milestoneId: Id<"milestones">;
+  projectId: Id<"projects">;
+  canEdit: boolean;
+}) {
+  const deps = useQuery(api.milestones.listDependencies, { milestoneId });
+  const allMilestones = useQuery(api.milestones.listForProject, { projectId });
+  const addDep = useMutation(api.milestones.addDependency);
+  const removeDep = useMutation(api.milestones.removeDependency);
+  const toast = useToast();
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (deps === undefined) return null;
+
+  const blockedByIds = new Set(deps.blockedBy.map((d) => d.milestone._id));
+  const candidates = (allMilestones ?? []).filter(
+    (m) => m._id !== milestoneId && !blockedByIds.has(m._id),
+  );
+
+  async function onAdd(blockingId: Id<"milestones">) {
+    setBusy(true);
+    try {
+      await addDep({
+        blockedMilestoneId: milestoneId,
+        blockingMilestoneId: blockingId,
+      });
+      toast.success("Závislost přidána");
+      setPicking(false);
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove(depId: Id<"milestoneDependencies">) {
+    setBusy(true);
+    try {
+      await removeDep({ depId });
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (
+    deps.blockedBy.length === 0 &&
+    deps.blocks.length === 0 &&
+    !canEdit
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+          Závislosti
+        </span>
+        {canEdit && candidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPicking((v) => !v)}
+            className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {picking ? "Zavřít" : "+ Přidat blokující milník"}
+          </button>
+        )}
+      </div>
+
+      {picking && (
+        <Select
+          onChange={(e) => {
+            if (e.target.value) onAdd(e.target.value as Id<"milestones">);
+          }}
+          disabled={busy}
+          defaultValue=""
+        >
+          <option value="">— Vyber milník, který musí být schválen dřív —</option>
+          {candidates.map((m) => (
+            <option key={m._id} value={m._id}>
+              {m.title}
+            </option>
+          ))}
+        </Select>
+      )}
+
+      {deps.blockedBy.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Závisí na (musí být schváleno dřív):
+          </div>
+          {deps.blockedBy.map((d) => (
+            <div
+              key={d.depId}
+              className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 text-sm dark:border-slate-800"
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-block h-2 w-2 rounded-full",
+                    d.milestone.status === "approved"
+                      ? "bg-green-500"
+                      : "bg-amber-500",
+                  )}
+                />
+                {d.milestone.title}
+                {d.milestone.status !== "approved" && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    (nehotovo)
+                  </span>
+                )}
+              </span>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(d.depId)}
+                  disabled={busy}
+                  className="text-slate-400 hover:text-red-500"
+                  aria-label="Odebrat závislost"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deps.blocks.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Blokuje (čekají na tento milník):
+          </div>
+          {deps.blocks.map((d) => (
+            <div
+              key={d.depId}
+              className="rounded border border-slate-200 px-2 py-1 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400"
+            >
+              {d.milestone.title}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MilestoneComments({
+  milestoneId,
+  me,
+}: {
+  milestoneId: Id<"milestones">;
+  me: Doc<"users"> | null;
+}) {
+  const comments = useQuery(api.milestones.listComments, { milestoneId });
+  const add = useMutation(api.milestones.addComment);
+  const remove = useMutation(api.milestones.removeComment);
+  const toast = useToast();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (comments === undefined) return null;
+
+  async function onAdd() {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await add({ milestoneId, text });
+      setText("");
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <span className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+        Diskuze ({comments.length})
+      </span>
+      {comments.length > 0 && (
+        <ul className="space-y-2">
+          {comments.map((c) => (
+            <li key={c._id} className="flex gap-2">
+              <Avatar
+                name={c.author?.name ?? null}
+                email={c.author?.email ?? null}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1 rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    {c.author?.name ?? c.author?.email ?? "—"}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400">
+                      {new Date(c._creationTime).toLocaleString("cs-CZ", {
+                        day: "numeric",
+                        month: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    {me && (c.authorId === me._id || me.role === "admin") && (
+                      <button
+                        type="button"
+                        onClick={() => remove({ commentId: c._id })}
+                        className="text-slate-400 hover:text-red-500"
+                        aria-label="Smazat komentář"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
+                  {c.text}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={1}
+          placeholder="Napiš komentář…"
+          className="flex-1"
+        />
+        <Button size="sm" onClick={onAdd} disabled={busy || !text.trim()}>
+          Odeslat
+        </Button>
+      </div>
     </div>
   );
 }

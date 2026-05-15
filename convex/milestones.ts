@@ -182,6 +182,22 @@ export const remove = mutation({
     for (const t of attached) {
       await ctx.db.patch(t._id, { milestoneId: undefined });
     }
+    // Cascade: závislosti (oba směry) + komentáře
+    const depsA = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocking", (q) => q.eq("blockingMilestoneId", args.milestoneId))
+      .collect();
+    const depsB = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocked", (q) => q.eq("blockedMilestoneId", args.milestoneId))
+      .collect();
+    for (const d of [...depsA, ...depsB]) await ctx.db.delete(d._id);
+    const comments = await ctx.db
+      .query("milestoneComments")
+      .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
+      .collect();
+    for (const c of comments) await ctx.db.delete(c._id);
+
     await ctx.db.delete(args.milestoneId);
     await logAction(ctx, {
       actor: me,
@@ -213,7 +229,24 @@ export const submit = mutation({
     if (milestone.status === "submitted") {
       throw new ConvexError("Milník už čeká na schválení");
     }
-    // Gate: pokud jsou k milníku navázány úkoly, musí být všechny ve stavu „done"
+    // Gate 1: blokující milníky musí být schválené
+    const blockers = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocked", (q) => q.eq("blockedMilestoneId", args.milestoneId))
+      .collect();
+    const unmetBlockers: string[] = [];
+    for (const dep of blockers) {
+      const blocking = await ctx.db.get(dep.blockingMilestoneId);
+      if (blocking && blocking.status !== "approved") {
+        unmetBlockers.push(blocking.title);
+      }
+    }
+    if (unmetBlockers.length > 0) {
+      throw new ConvexError(
+        `Milník nelze odeslat: čeká na schválení blokujících milníků: ${unmetBlockers.join(", ")}.`,
+      );
+    }
+    // Gate 2: pokud jsou k milníku navázány úkoly, musí být všechny ve stavu „done"
     const linkedTasks = await ctx.db
       .query("tasks")
       .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
@@ -555,5 +588,238 @@ export const detachTask = mutation({
       projectId: milestone.projectId,
       summary: `Odpojil úkol „${task.title}" od milníku „${milestone.title}"`,
     });
+  },
+});
+
+/* ---------- Závislosti mezi milníky ---------- */
+
+export const listDependencies = query({
+  args: { milestoneId: v.id("milestones") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) return { blockedBy: [], blocks: [] };
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!(await canViewProject(ctx, me, project))) {
+      return { blockedBy: [], blocks: [] };
+    }
+    const blockedByDeps = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocked", (q) =>
+        q.eq("blockedMilestoneId", args.milestoneId),
+      )
+      .collect();
+    const blocksDeps = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocking", (q) =>
+        q.eq("blockingMilestoneId", args.milestoneId),
+      )
+      .collect();
+    const blockedBy = await Promise.all(
+      blockedByDeps.map(async (d) => {
+        const m = await ctx.db.get(d.blockingMilestoneId);
+        return m ? { depId: d._id, milestone: m } : null;
+      }),
+    );
+    const blocks = await Promise.all(
+      blocksDeps.map(async (d) => {
+        const m = await ctx.db.get(d.blockedMilestoneId);
+        return m ? { depId: d._id, milestone: m } : null;
+      }),
+    );
+    return {
+      blockedBy: blockedBy.filter(
+        (x): x is NonNullable<typeof x> => x !== null,
+      ),
+      blocks: blocks.filter((x): x is NonNullable<typeof x> => x !== null),
+    };
+  },
+});
+
+async function wouldCreateCycle(
+  ctx: { db: { query: any } },
+  blockingId: Id<"milestones">,
+  blockedId: Id<"milestones">,
+): Promise<boolean> {
+  const visited = new Set<string>();
+  const stack: Id<"milestones">[] = [blockedId];
+  while (stack.length > 0) {
+    const cur = stack.pop() as Id<"milestones">;
+    if (cur === blockingId) return true;
+    if (visited.has(cur as string)) continue;
+    visited.add(cur as string);
+    const next = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_blocking", (q: any) =>
+        q.eq("blockingMilestoneId", cur),
+      )
+      .collect();
+    for (const d of next) stack.push(d.blockedMilestoneId);
+  }
+  return false;
+}
+
+export const addDependency = mutation({
+  args: {
+    blockedMilestoneId: v.id("milestones"),
+    blockingMilestoneId: v.id("milestones"),
+  },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    if (args.blockedMilestoneId === args.blockingMilestoneId) {
+      throw new ConvexError("Milník nemůže blokovat sám sebe");
+    }
+    const blocked = await ctx.db.get(args.blockedMilestoneId);
+    const blocking = await ctx.db.get(args.blockingMilestoneId);
+    if (!blocked || !blocking) throw new ConvexError("Milník nenalezen");
+    if (blocked.projectId !== blocking.projectId) {
+      throw new ConvexError(
+        "Závislost je možná jen mezi milníky stejného projektu",
+      );
+    }
+    const project = await ensureProject(ctx, blocked.projectId);
+    if (!canManageMilestone(me, project)) {
+      throw new ConvexError("Nemáte oprávnění upravovat závislosti");
+    }
+    const existing = await ctx.db
+      .query("milestoneDependencies")
+      .withIndex("by_pair", (q) =>
+        q
+          .eq("blockingMilestoneId", args.blockingMilestoneId)
+          .eq("blockedMilestoneId", args.blockedMilestoneId),
+      )
+      .first();
+    if (existing) return existing._id;
+    if (
+      await wouldCreateCycle(
+        ctx,
+        args.blockingMilestoneId,
+        args.blockedMilestoneId,
+      )
+    ) {
+      throw new ConvexError("Tato závislost by vytvořila cyklus");
+    }
+    const id = await ctx.db.insert("milestoneDependencies", {
+      blockingMilestoneId: args.blockingMilestoneId,
+      blockedMilestoneId: args.blockedMilestoneId,
+      createdBy: me._id,
+    });
+    await logAction(ctx, {
+      actor: me,
+      action: "milestone.add_dependency",
+      entityType: "milestone",
+      entityId: args.blockedMilestoneId,
+      projectId: project._id,
+      summary: `Milník „${blocked.title}" nyní závisí na „${blocking.title}"`,
+    });
+    return id;
+  },
+});
+
+export const removeDependency = mutation({
+  args: { depId: v.id("milestoneDependencies") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const dep = await ctx.db.get(args.depId);
+    if (!dep) return;
+    const blocked = await ctx.db.get(dep.blockedMilestoneId);
+    if (!blocked) {
+      await ctx.db.delete(args.depId);
+      return;
+    }
+    const project = await ensureProject(ctx, blocked.projectId);
+    if (!canManageMilestone(me, project)) {
+      throw new ConvexError("Nemáte oprávnění upravovat závislosti");
+    }
+    await ctx.db.delete(args.depId);
+  },
+});
+
+/* ---------- Komentáře u milníků ---------- */
+
+export const listComments = query({
+  args: { milestoneId: v.id("milestones") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) return [];
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!(await canViewProject(ctx, me, project))) return [];
+    const comments = await ctx.db
+      .query("milestoneComments")
+      .withIndex("by_milestone", (q) =>
+        q.eq("milestoneId", args.milestoneId),
+      )
+      .collect();
+    comments.sort((a, b) => a._creationTime - b._creationTime);
+    const authorIds = Array.from(
+      new Set(comments.map((c) => c.authorId as string)),
+    );
+    const authors = await Promise.all(
+      authorIds.map((id) => ctx.db.get(id as Id<"users">)),
+    );
+    const authorById = new Map<string, Doc<"users">>();
+    for (const a of authors) if (a) authorById.set(a._id as string, a);
+    return comments.map((c) => ({
+      ...c,
+      author: authorById.get(c.authorId as string) ?? null,
+    }));
+  },
+});
+
+export const addComment = mutation({
+  args: { milestoneId: v.id("milestones"), text: v.string() },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) throw new ConvexError("Milník nenalezen");
+    const project = await ensureProject(ctx, milestone.projectId);
+    if (!(await canViewProject(ctx, me, project))) {
+      throw new ConvexError("Nemáte přístup k projektu");
+    }
+    const text = args.text.trim();
+    if (!text) throw new ConvexError("Komentář nesmí být prázdný");
+    const id = await ctx.db.insert("milestoneComments", {
+      milestoneId: args.milestoneId,
+      authorId: me._id,
+      text,
+    });
+    const recipients = new Set<string>();
+    recipients.add(milestone.approverId as string);
+    if (milestone.submittedBy) recipients.add(milestone.submittedBy as string);
+    if (milestone.createdBy) recipients.add(milestone.createdBy as string);
+    recipients.delete(me._id as string);
+    for (const rid of recipients) {
+      await emit(ctx, {
+        recipientId: rid as Id<"users">,
+        actorId: me._id,
+        type: "comment_added",
+        projectId: milestone.projectId,
+        title: `Nový komentář u milníku „${milestone.title}"`,
+        body: text.slice(0, 140),
+      });
+    }
+    return id;
+  },
+});
+
+export const removeComment = mutation({
+  args: { commentId: v.id("milestoneComments") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment) return;
+    const milestone = await ctx.db.get(comment.milestoneId);
+    if (!milestone) {
+      await ctx.db.delete(args.commentId);
+      return;
+    }
+    const project = await ensureProject(ctx, milestone.projectId);
+    const isOwnerOrManager =
+      comment.authorId === me._id || canManageMilestone(me, project);
+    if (!isOwnerOrManager) {
+      throw new ConvexError("Smazat lze jen vlastní komentář");
+    }
+    await ctx.db.delete(args.commentId);
   },
 });

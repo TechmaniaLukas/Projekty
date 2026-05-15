@@ -202,6 +202,22 @@ export default defineSchema({
     .index("by_approver_and_status", ["approverId", "status"])
     .index("by_due", ["dueDate"]),
 
+  milestoneDependencies: defineTable({
+    blockingMilestoneId: v.id("milestones"),
+    blockedMilestoneId: v.id("milestones"),
+    createdBy: v.id("users"),
+  })
+    .index("by_blocking", ["blockingMilestoneId"])
+    .index("by_blocked", ["blockedMilestoneId"])
+    .index("by_pair", ["blockingMilestoneId", "blockedMilestoneId"]),
+
+  milestoneComments: defineTable({
+    milestoneId: v.id("milestones"),
+    authorId: v.id("users"),
+    text: v.string(),
+    editedAt: v.optional(v.number()),
+  }).index("by_milestone", ["milestoneId"]),
+
   auditLog: defineTable({
     actorId: v.id("users"),
     action: v.string(),
