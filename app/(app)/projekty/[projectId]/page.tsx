@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { use, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft, Settings, Archive, ArchiveRestore, FileText } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -43,9 +44,24 @@ export default function ProjectDetailPage({
   const unarchive = useMutation(api.projects.unarchive);
   const toast = useToast();
 
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const validTabs = [
+    "tasks",
+    "milestones",
+    "gantt",
+    "time",
+    "members",
+    "activity",
+  ] as const;
+  const initialTab = (
+    validTabs as readonly string[]
+  ).includes(tabParam ?? "")
+    ? (tabParam as (typeof validTabs)[number])
+    : "tasks";
   const [tab, setTab] = useState<
     "tasks" | "milestones" | "gantt" | "time" | "members" | "activity"
-  >("tasks");
+  >(initialTab);
 
   if (project === undefined) {
     return <div className="text-sm text-slate-500 dark:text-slate-400">Načítám…</div>;

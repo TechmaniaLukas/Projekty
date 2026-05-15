@@ -19,13 +19,20 @@ import {
   PROJECT_DEPARTMENT_LABELS,
   DEPARTMENT_COLORS,
   DEPARTMENT_LABELS,
-  PROJECT_STATUS_LABELS,
   ROLE_LABELS,
   type ProjectDepartment,
 } from "@/lib/constants";
 import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
 import { PendingApprovals } from "@/components/milestones/PendingApprovals";
 import { cn } from "@/lib/utils";
+
+const MS_STATUS_LABEL: Record<string, string> = {
+  planned: "Plánováno",
+  in_progress: "Probíhá",
+  submitted: "Čeká na schválení",
+  approved: "Schváleno",
+  rejected: "Vráceno",
+};
 
 export default function ReditelPage() {
   const me = useQuery(api.users.me);
@@ -187,9 +194,10 @@ export default function ReditelPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    <th className="py-2 pr-3">Milník</th>
                     <th className="py-2 pr-3">Projekt</th>
                     <th className="py-2 pr-3">Oddělení</th>
-                    <th className="py-2 pr-3">Vlastník</th>
+                    <th className="py-2 pr-3">Schvaluje</th>
                     <th className="py-2 pr-3">Stav</th>
                     <th className="py-2 pr-3">Progres</th>
                     <th className="py-2 pr-3 text-right">Termín</th>
@@ -203,11 +211,14 @@ export default function ReditelPage() {
                     >
                       <td className="py-2 pr-3">
                         <Link
-                          href={`/projekty/${m._id}`}
+                          href={`/projekty/${m.projectId}?tab=milestones`}
                           className="font-medium text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400"
                         >
                           {m.name}
                         </Link>
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600 dark:text-slate-400">
+                        {m.projectName}
                       </td>
                       <td className="py-2 pr-3">
                         <Badge tone={DEPARTMENT_COLORS[m.department as ProjectDepartment]}>
@@ -218,7 +229,7 @@ export default function ReditelPage() {
                         {m.ownerName ?? "—"}
                       </td>
                       <td className="py-2 pr-3 text-slate-600 dark:text-slate-400">
-                        {PROJECT_STATUS_LABELS[m.status]}
+                        {MS_STATUS_LABEL[m.status] ?? m.status}
                       </td>
                       <td className="py-2 pr-3">
                         <div className="flex items-center gap-2">

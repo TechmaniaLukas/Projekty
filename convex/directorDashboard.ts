@@ -22,7 +22,7 @@ export const executiveSummary = query({
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [projects, tasks, users, entries] = await Promise.all([
+    const [projects, tasks, users, entries, allMilestones] = await Promise.all([
       ctx.db.query("projects").collect(),
       ctx.db.query("tasks").collect(),
       ctx.db.query("users").collect(),
@@ -30,6 +30,7 @@ export const executiveSummary = query({
         .query("timeEntries")
         .withIndex("by_start", (q) => q.gte("startTime", thirtyDaysAgo))
         .collect(),
+      ctx.db.query("milestones").collect(),
     ]);
 
     // KPI top-line
@@ -96,32 +97,33 @@ export const executiveSummary = query({
       };
     });
 
-    // Nadcházející milníky napříč všemi odděleními (60 dní)
-    const milestones = projects
+    // Nadcházející milníky napříč všemi odděleními (60 dní) — reálná entita
+    const projectById = new Map(projects.map((p) => [p._id as string, p]));
+    const milestones = allMilestones
       .filter(
-        (p) =>
-          p.deadline &&
-          p.deadline >= now &&
-          p.deadline <= sixtyDaysAhead &&
-          p.status !== "done" &&
-          p.status !== "archived",
+        (m) =>
+          m.dueDate >= now &&
+          m.dueDate <= sixtyDaysAhead &&
+          m.status !== "approved",
       )
-      .sort((a, b) => (a.deadline ?? 0) - (b.deadline ?? 0))
+      .sort((a, b) => a.dueDate - b.dueDate)
       .slice(0, 15)
-      .map((p) => {
-        const projectTasks = tasks.filter((t) => t.projectId === p._id);
-        const total = projectTasks.length;
-        const done = projectTasks.filter((t) => t.status === "done").length;
-        const owner = users.find((u) => u._id === p.ownerId);
+      .map((m) => {
+        const p = projectById.get(m.projectId as string);
+        const linked = tasks.filter((t) => t.milestoneId === m._id);
+        const total = linked.length;
+        const done = linked.filter((t) => t.status === "done").length;
+        const approver = users.find((u) => u._id === m.approverId);
         return {
-          _id: p._id,
-          name: p.name,
-          deadline: p.deadline ?? 0,
-          department: p.department,
-          status: p.status,
-          priority: p.priority,
+          _id: m._id,
+          name: m.title,
+          projectId: m.projectId,
+          projectName: p?.name ?? "—",
+          deadline: m.dueDate,
+          department: p?.department ?? "cross",
+          status: m.status,
           progress: total > 0 ? Math.round((done / total) * 100) : 0,
-          ownerName: owner?.name ?? owner?.email ?? null,
+          ownerName: approver?.name ?? approver?.email ?? null,
         };
       });
 

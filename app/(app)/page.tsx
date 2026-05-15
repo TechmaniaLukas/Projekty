@@ -9,6 +9,7 @@ import { DepartmentSummary } from "@/components/dashboard/DepartmentSummary";
 import { ThisWeekTime } from "@/components/dashboard/ThisWeekTime";
 import { PendingApprovals } from "@/components/milestones/PendingApprovals";
 import { TimesheetApprovals } from "@/components/timesheets/TimesheetApprovals";
+import { UpcomingMilestones } from "@/components/milestones/UpcomingMilestones";
 import { ROLE_LABELS } from "@/lib/constants";
 
 export default function DashboardPage() {
@@ -55,6 +56,7 @@ export default function DashboardPage() {
         <MyTasks />
         <UpcomingDeadlines />
       </div>
+      <UpcomingMilestones />
       {showDeptSummary && <DepartmentSummary />}
     </div>
   );

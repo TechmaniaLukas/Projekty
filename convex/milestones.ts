@@ -392,6 +392,62 @@ export const reject = mutation({
 });
 
 /**
+ * Nadcházející milníky napříč projekty, na které má uživatel přístup.
+ * Pro dashboard widget. Default 30 dní, jen neuzavřené (ne approved).
+ */
+export const upcomingForMe = query({
+  args: { days: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const now = Date.now();
+    const horizon = now + (args.days ?? 30) * 24 * 3600 * 1000;
+
+    const all = await ctx.db
+      .query("milestones")
+      .withIndex("by_due", (q) => q.lt("dueDate", horizon))
+      .collect();
+
+    const projectCache = new Map<string, Doc<"projects"> | null>();
+    const result = [];
+    for (const m of all) {
+      if (m.status === "approved") continue;
+      let project = projectCache.get(m.projectId as string);
+      if (project === undefined) {
+        project = await ctx.db.get(m.projectId);
+        projectCache.set(m.projectId as string, project);
+      }
+      if (!project) continue;
+      if (!(await canViewProject(ctx, me, project))) continue;
+
+      const linked = await ctx.db
+        .query("tasks")
+        .withIndex("by_milestone", (q) => q.eq("milestoneId", m._id))
+        .collect();
+      const done = linked.filter((t) => t.status === "done").length;
+      result.push({
+        _id: m._id,
+        title: m.title,
+        projectId: m.projectId,
+        projectName: project.name,
+        department: project.department,
+        dueDate: m.dueDate,
+        status: m.status,
+        taskStats: {
+          total: linked.length,
+          done,
+          percent:
+            linked.length > 0
+              ? Math.round((done / linked.length) * 100)
+              : null,
+        },
+      });
+    }
+    result.sort((a, b) => a.dueDate - b.dueDate);
+    return result;
+  },
+});
+
+/**
  * Milníky pro množinu projektů — pro overview obrazovky (časová osa).
  * Vrací jen milníky z projektů, na které má uživatel view access.
  */
