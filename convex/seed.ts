@@ -101,6 +101,12 @@ export const purgeDevData = mutation({
           .withIndex("by_task", (q) => q.eq("taskId", t._id))
           .collect();
         for (const te of tEntries) await ctx.db.delete(te._id);
+        // checklist položky úkolu
+        const checklist = await ctx.db
+          .query("checklistItems")
+          .withIndex("by_task", (q) => q.eq("taskId", t._id))
+          .collect();
+        for (const ci of checklist) await ctx.db.delete(ci._id);
         await ctx.db.delete(t._id);
         deletedTasks++;
       }
@@ -146,6 +152,13 @@ export const purgeDevData = mutation({
         .collect();
       for (const pm of members) await ctx.db.delete(pm._id);
 
+      // kontakty projektu
+      const contacts = await ctx.db
+        .query("projectContacts")
+        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .collect();
+      for (const c of contacts) await ctx.db.delete(c._id);
+
       await ctx.db.delete(project._id);
       deletedProjects++;
     }
@@ -167,6 +180,17 @@ export const purgeDevData = mutation({
         .filter((q) => q.eq(q.field("userId"), user._id))
         .collect();
       for (const s of sessions) await ctx.db.delete(s._id);
+      // výkazy ke schválení a uložené pohledy test účtu
+      const subs = await ctx.db
+        .query("timesheetSubmissions")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      for (const s of subs) await ctx.db.delete(s._id);
+      const views = await ctx.db
+        .query("savedViews")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      for (const sv of views) await ctx.db.delete(sv._id);
       await ctx.db.delete(user._id);
       deletedUsers++;
     }

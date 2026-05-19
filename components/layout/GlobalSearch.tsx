@@ -18,17 +18,45 @@ interface Props {
   onClose: () => void;
 }
 
-const COMMANDS: { title: string; subtitle: string; href: string }[] = [
+type Role = "admin" | "director" | "pm" | "department_lead" | "member";
+
+const COMMANDS: {
+  title: string;
+  subtitle: string;
+  href: string;
+  roles?: Role[];
+}[] = [
   { title: "Můj přehled", subtitle: "Dashboard", href: "/" },
   { title: "Projekty", subtitle: "Seznam projektů", href: "/projekty" },
-  { title: "Nový projekt", subtitle: "Vytvořit projekt", href: "/projekty/novy" },
+  {
+    title: "Nový projekt",
+    subtitle: "Vytvořit projekt",
+    href: "/projekty/novy",
+    roles: ["admin", "pm", "department_lead"],
+  },
   { title: "Šablony", subtitle: "Projektové šablony", href: "/sablony" },
   { title: "Výkazy", subtitle: "Můj výkaz práce", href: "/vykazy" },
-  { title: "Přehled výkazů", subtitle: "Tým", href: "/vykazy/prehled" },
+  {
+    title: "Přehled výkazů",
+    subtitle: "Tým",
+    href: "/vykazy/prehled",
+    roles: ["admin", "pm", "department_lead"],
+  },
   { title: "Kalendář", subtitle: "Kalendář", href: "/kalendar" },
   { title: "Časová osa", subtitle: "Gantt napříč projekty", href: "/casova-osa" },
   { title: "Tým", subtitle: "Lidé", href: "/tym" },
-  { title: "Ředitelský přehled", subtitle: "Executive dashboard", href: "/reditel" },
+  {
+    title: "Ředitelský přehled",
+    subtitle: "Executive dashboard",
+    href: "/reditel",
+    roles: ["admin", "director"],
+  },
+  {
+    title: "Měsíční report",
+    subtitle: "Souhrn napříč odděleními",
+    href: "/report-mesicni",
+    roles: ["admin", "director"],
+  },
   { title: "Nastavení", subtitle: "Profil a notifikace", href: "/nastaveni" },
 ];
 
@@ -38,6 +66,7 @@ export function GlobalSearch({ open, onClose }: Props) {
   const [q, setQ] = useState("");
   const [highlighted, setHighlighted] = useState(0);
 
+  const me = useQuery(api.users.me);
   const results = useQuery(
     api.search.global,
     open && q.trim().length >= 2 ? { q, limit: 8 } : "skip",
@@ -71,10 +100,12 @@ export function GlobalSearch({ open, onClose }: Props) {
   if (!open) return null;
 
   const term = q.trim().toLowerCase();
+  const role = me?.role as Role | undefined;
+  const allowed = COMMANDS.filter((c) => !c.roles || (role && c.roles.includes(role)));
   const commandMatches = (
     term.length === 0
-      ? COMMANDS
-      : COMMANDS.filter(
+      ? allowed
+      : allowed.filter(
           (c) =>
             c.title.toLowerCase().includes(term) ||
             c.subtitle.toLowerCase().includes(term),

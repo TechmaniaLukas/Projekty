@@ -461,6 +461,11 @@ export const remove = mutation({
         .withIndex("by_task", (q) => q.eq("taskId", id))
         .collect();
       for (const te of tEntries) await ctx.db.patch(te._id, { taskId: undefined });
+      const checklist = await ctx.db
+        .query("checklistItems")
+        .withIndex("by_task", (q) => q.eq("taskId", id))
+        .collect();
+      for (const ci of checklist) await ctx.db.delete(ci._id);
       await ctx.db.delete(id);
     }
     // Po smazání úkolu(ů) přepočítej termíny milníků, na které byly navázány.
@@ -622,6 +627,11 @@ export const bulkRemove = mutation({
           .withIndex("by_task", (q) => q.eq("taskId", id))
           .collect();
         for (const te of tEntries) await ctx.db.patch(te._id, { taskId: undefined });
+        const checklist = await ctx.db
+          .query("checklistItems")
+          .withIndex("by_task", (q) => q.eq("taskId", id))
+          .collect();
+        for (const ci of checklist) await ctx.db.delete(ci._id);
         await ctx.db.delete(id);
       }
       removed += 1;
