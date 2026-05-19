@@ -1,11 +1,24 @@
 import { Email } from "@convex-dev/auth/providers/Email";
 import { convexAuth } from "@convex-dev/auth/server";
 
+// Přihlásit se smí jen firemní e-maily. Brání self-registraci cizích účtů
+// na veřejné URL a úniku adresáře zaměstnanců.
+const ALLOWED_EMAIL_DOMAIN = "techmania.cz";
+
+function isAllowedEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
+}
+
 const MagicLinkEmail = Email({
   id: "magic-link",
   maxAge: 60 * 30,
   authorize: undefined,
   async sendVerificationRequest({ identifier: email, url }) {
+    if (!isAllowedEmail(email)) {
+      throw new Error(
+        `Přihlášení je povoleno jen pro e-maily @${ALLOWED_EMAIL_DOMAIN}.`,
+      );
+    }
     const apiKey = process.env.AUTH_RESEND_KEY;
     const from = process.env.AUTH_EMAIL_FROM ?? "Techmania Projekty <onboarding@resend.dev>";
     const subject = "Přihlášení do Techmania Projekty";
@@ -65,6 +78,12 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     async createOrUpdateUser(ctx, args) {
       if (args.existingUserId) return args.existingUserId;
       const email = args.profile.email as string | undefined;
+      // Defense-in-depth: i kdyby ověření prošlo, nevytvářej cizí účet.
+      if (!email || !isAllowedEmail(email)) {
+        throw new Error(
+          `Přihlášení je povoleno jen pro e-maily @${ALLOWED_EMAIL_DOMAIN}.`,
+        );
+      }
       if (email) {
         // Convex Auth callback dostává generický db typ bez znalosti našich
         // indexů, proto cast přes any. Index "email" je definovaný v schema.ts.

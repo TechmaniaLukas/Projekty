@@ -74,8 +74,9 @@ export const global = query({
       if (results.length >= limit * 2) break;
     }
 
+    // Uživatele ve vyhledávání jen pro uživatele s rolí (ne bez-role účty).
     const lower = term.toLowerCase();
-    const allUsers = await ctx.db.query("users").collect();
+    const allUsers = me.role ? await ctx.db.query("users").collect() : [];
     for (const u of allUsers) {
       if (u.isActive === false) continue;
       const name = (u.name ?? "").toLowerCase();

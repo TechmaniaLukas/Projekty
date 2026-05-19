@@ -11,6 +11,7 @@ import {
   isAdmin,
   isPm,
   isDeptLead,
+  isDirector,
   isProjectMemberOrAssignee,
 } from "./lib/permissions";
 import {
@@ -63,7 +64,7 @@ export const list = query({
       projects = projects.filter((p) => p.status === args.status);
     }
 
-    if (isAdmin(me) || isPm(me)) {
+    if (isAdmin(me) || isPm(me) || isDirector(me)) {
       return projects;
     }
     if (isDeptLead(me)) {

@@ -23,7 +23,9 @@ export const me = query({
 export const list = query({
   args: { includeInactive: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const me = await requireUser(ctx);
+    // Adresář (jména + e-maily) jen pro uživatele s přidělenou rolí.
+    if (!me.role) return [];
     const all = await ctx.db.query("users").collect();
     return args.includeInactive ? all : all.filter((u) => u.isActive !== false);
   },
