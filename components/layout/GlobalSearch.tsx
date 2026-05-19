@@ -8,6 +8,7 @@ import {
   FolderKanban,
   ListTodo,
   User as UserIcon,
+  CornerDownLeft,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,20 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
+
+const COMMANDS: { title: string; subtitle: string; href: string }[] = [
+  { title: "Můj přehled", subtitle: "Dashboard", href: "/" },
+  { title: "Projekty", subtitle: "Seznam projektů", href: "/projekty" },
+  { title: "Nový projekt", subtitle: "Vytvořit projekt", href: "/projekty/novy" },
+  { title: "Šablony", subtitle: "Projektové šablony", href: "/sablony" },
+  { title: "Výkazy", subtitle: "Můj výkaz práce", href: "/vykazy" },
+  { title: "Přehled výkazů", subtitle: "Tým", href: "/vykazy/prehled" },
+  { title: "Kalendář", subtitle: "Kalendář", href: "/kalendar" },
+  { title: "Časová osa", subtitle: "Gantt napříč projekty", href: "/casova-osa" },
+  { title: "Tým", subtitle: "Lidé", href: "/tym" },
+  { title: "Ředitelský přehled", subtitle: "Executive dashboard", href: "/reditel" },
+  { title: "Nastavení", subtitle: "Profil a notifikace", href: "/nastaveni" },
+];
 
 export function GlobalSearch({ open, onClose }: Props) {
   const router = useRouter();
@@ -55,7 +70,25 @@ export function GlobalSearch({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  const items = results ?? [];
+  const term = q.trim().toLowerCase();
+  const commandMatches = (
+    term.length === 0
+      ? COMMANDS
+      : COMMANDS.filter(
+          (c) =>
+            c.title.toLowerCase().includes(term) ||
+            c.subtitle.toLowerCase().includes(term),
+        )
+  ).map((c) => ({
+    kind: "command" as const,
+    id: c.href,
+    title: c.title,
+    subtitle: c.subtitle,
+    href: c.href,
+  }));
+
+  const searchResults = results ?? [];
+  const items = [...commandMatches, ...searchResults];
 
   function go(idx: number) {
     const item = items[idx];
@@ -96,7 +129,7 @@ export function GlobalSearch({ open, onClose }: Props) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Hledej projekty, úkoly nebo uživatele…"
+            placeholder="Skoč kamkoliv nebo hledej projekty, úkoly, lidi…"
             className="flex-1 border-0 bg-transparent py-3 text-sm outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
             autoComplete="off"
           />
@@ -105,30 +138,29 @@ export function GlobalSearch({ open, onClose }: Props) {
           </kbd>
         </div>
         <div className="max-h-[50vh] overflow-y-auto">
-          {q.trim().length < 2 && (
-            <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
-              Začni psát alespoň 2 znaky.
-            </div>
-          )}
-          {q.trim().length >= 2 && results === undefined && (
+          {items.length === 0 && q.trim().length >= 2 && results === undefined && (
             <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
               Hledám…
             </div>
           )}
-          {results !== undefined && results.length === 0 && q.trim().length >= 2 && (
-            <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
-              Nic nenalezeno.
-            </div>
-          )}
+          {items.length === 0 &&
+            results !== undefined &&
+            q.trim().length >= 2 && (
+              <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                Nic nenalezeno.
+              </div>
+            )}
           {items.length > 0 && (
             <ul role="listbox">
               {items.map((item, idx) => {
                 const Icon =
-                  item.kind === "project"
-                    ? FolderKanban
-                    : item.kind === "task"
-                      ? ListTodo
-                      : UserIcon;
+                  item.kind === "command"
+                    ? CornerDownLeft
+                    : item.kind === "project"
+                      ? FolderKanban
+                      : item.kind === "task"
+                        ? ListTodo
+                        : UserIcon;
                 return (
                   <li
                     key={`${item.kind}-${item.id}`}
@@ -147,11 +179,13 @@ export function GlobalSearch({ open, onClose }: Props) {
                     <div
                       className={cn(
                         "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-                        item.kind === "project"
-                          ? "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300"
-                          : item.kind === "task"
-                            ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+                        item.kind === "command"
+                          ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          : item.kind === "project"
+                            ? "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300"
+                            : item.kind === "task"
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
+                              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -167,11 +201,13 @@ export function GlobalSearch({ open, onClose }: Props) {
                       )}
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                      {item.kind === "project"
-                        ? "projekt"
-                        : item.kind === "task"
-                          ? "úkol"
-                          : "uživatel"}
+                      {item.kind === "command"
+                        ? "přejít"
+                        : item.kind === "project"
+                          ? "projekt"
+                          : item.kind === "task"
+                            ? "úkol"
+                            : "uživatel"}
                     </div>
                   </li>
                 );

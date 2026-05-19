@@ -16,6 +16,7 @@ import { ProjectActivity } from "@/components/projects/ProjectActivity";
 import { ProjectGantt } from "@/components/projects/ProjectGantt";
 import { ProjectTimeReport } from "@/components/projects/ProjectTimeReport";
 import { MilestoneList } from "@/components/milestones/MilestoneList";
+import { ProjectContacts } from "@/components/projects/ProjectContacts";
 import { ExportButton } from "@/components/projects/ExportButton";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -52,6 +53,7 @@ export default function ProjectDetailPage({
     "gantt",
     "time",
     "members",
+    "contacts",
     "activity",
   ] as const;
   const initialTab = (
@@ -60,7 +62,13 @@ export default function ProjectDetailPage({
     ? (tabParam as (typeof validTabs)[number])
     : "tasks";
   const [tab, setTab] = useState<
-    "tasks" | "milestones" | "gantt" | "time" | "members" | "activity"
+    | "tasks"
+    | "milestones"
+    | "gantt"
+    | "time"
+    | "members"
+    | "contacts"
+    | "activity"
   >(initialTab);
 
   if (project === undefined) {
@@ -184,6 +192,7 @@ export default function ProjectDetailPage({
             { value: "gantt", label: "Gantt" },
             { value: "time", label: "Výkazy" },
             { value: "members", label: "Členové" },
+            { value: "contacts", label: "Kontakty" },
             { value: "activity", label: "Aktivita" },
           ].map((t) => (
             <button
@@ -211,6 +220,9 @@ export default function ProjectDetailPage({
       {tab === "time" && <ProjectTimeReport project={project} />}
       {tab === "members" && (
         <ProjectMembersTab project={project} canEdit={canEdit} />
+      )}
+      {tab === "contacts" && (
+        <ProjectContacts projectId={project._id} canEdit={canEdit} />
       )}
       {tab === "activity" && <ProjectActivity projectId={project._id} />}
     </div>
