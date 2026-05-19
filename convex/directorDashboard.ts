@@ -208,3 +208,117 @@ export const recentActivity = query({
     });
   },
 });
+
+/**
+ * Měsíční souhrnný report napříč odděleními (pro poradu vedení / PDF).
+ */
+export const monthlyReport = query({
+  args: { year: v.number(), month: v.number() },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    if (!isDirector(me) && !isAdmin(me)) return null;
+
+    const start = new Date(args.year, args.month - 1, 1).getTime();
+    const end = new Date(args.year, args.month, 1).getTime();
+
+    const [projects, tasks, users, entries, milestones] = await Promise.all([
+      ctx.db.query("projects").collect(),
+      ctx.db.query("tasks").collect(),
+      ctx.db.query("users").collect(),
+      ctx.db
+        .query("timeEntries")
+        .withIndex("by_start", (q) =>
+          q.gte("startTime", start).lt("startTime", end),
+        )
+        .collect(),
+      ctx.db.query("milestones").collect(),
+    ]);
+
+    const departments = ["it", "facility", "vyroba", "cross"] as const;
+    const byDept = departments.map((dep) => {
+      const deptProjects = projects.filter((p) => p.department === dep);
+      const deptProjectIds = new Set(deptProjects.map((p) => p._id as string));
+      const hours = entries
+        .filter((e) => deptProjectIds.has(e.projectId as string))
+        .reduce((s, e) => s + e.hours, 0);
+      const tasksDone = tasks.filter(
+        (t) =>
+          deptProjectIds.has(t.projectId as string) &&
+          t.completedAt !== undefined &&
+          t.completedAt >= start &&
+          t.completedAt < end,
+      ).length;
+      const msApproved = milestones.filter(
+        (m) =>
+          deptProjectIds.has(m.projectId as string) &&
+          m.status === "approved" &&
+          m.decidedAt !== undefined &&
+          m.decidedAt >= start &&
+          m.decidedAt < end,
+      ).length;
+      const projectsDone = deptProjects.filter(
+        (p) =>
+          p.status === "done" &&
+          p._creationTime < end /* hrubý odhad: dokončené k datu */,
+      ).length;
+      return {
+        department: dep,
+        activeProjects: deptProjects.filter(
+          (p) => p.status === "active" || p.status === "planning",
+        ).length,
+        projectsDone,
+        tasksDone,
+        milestonesApproved: msApproved,
+        hours: Math.round(hours * 100) / 100,
+      };
+    });
+
+    const totalHours = entries.reduce((s, e) => s + e.hours, 0);
+    const hoursByUser = new Map<string, number>();
+    for (const e of entries) {
+      hoursByUser.set(
+        e.userId as string,
+        (hoursByUser.get(e.userId as string) ?? 0) + e.hours,
+      );
+    }
+    const topContributors = Array.from(hoursByUser.entries())
+      .map(([uid, h]) => {
+        const u = users.find((x) => x._id === uid);
+        return u
+          ? {
+              name: u.name ?? u.email ?? "—",
+              hours: Math.round(h * 100) / 100,
+            }
+          : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.hours - a.hours)
+      .slice(0, 10);
+
+    const approvedMilestones = milestones
+      .filter(
+        (m) =>
+          m.status === "approved" &&
+          m.decidedAt !== undefined &&
+          m.decidedAt >= start &&
+          m.decidedAt < end,
+      )
+      .map((m) => {
+        const p = projects.find((x) => x._id === m.projectId);
+        return {
+          title: m.title,
+          projectName: p?.name ?? "—",
+          department: p?.department ?? "cross",
+        };
+      });
+
+    return {
+      period: { year: args.year, month: args.month },
+      generatedAt: Date.now(),
+      totalHours: Math.round(totalHours * 100) / 100,
+      byDept,
+      topContributors,
+      approvedMilestones,
+    };
+  },
+});

@@ -61,7 +61,7 @@ export default function ReditelPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <Crown className="h-7 w-7 text-amber-500" />
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             Ředitelský přehled
           </h1>
@@ -69,6 +69,12 @@ export default function ReditelPage() {
             Stav projektů technického oddělení napříč všemi sub-odděleními. Read-only.
           </p>
         </div>
+        <Link
+          href="/report-mesicni"
+          className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Měsíční report →
+        </Link>
       </div>
 
       <PendingApprovals />
