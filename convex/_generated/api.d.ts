@@ -11,6 +11,7 @@
 import type * as attachments from "../attachments.js";
 import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
+import type * as checklists from "../checklists.js";
 import type * as comments from "../comments.js";
 import type * as constants from "../constants.js";
 import type * as crons from "../crons.js";
@@ -27,8 +28,10 @@ import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_scheduling from "../lib/scheduling.js";
 import type * as milestones from "../milestones.js";
 import type * as notifications from "../notifications.js";
+import type * as projectContacts from "../projectContacts.js";
 import type * as projects from "../projects.js";
 import type * as reactions from "../reactions.js";
+import type * as savedViews from "../savedViews.js";
 import type * as search from "../search.js";
 import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
@@ -49,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   attachments: typeof attachments;
   auditLog: typeof auditLog;
   auth: typeof auth;
+  checklists: typeof checklists;
   comments: typeof comments;
   constants: typeof constants;
   crons: typeof crons;
@@ -65,8 +69,10 @@ declare const fullApi: ApiFromModules<{
   "lib/scheduling": typeof lib_scheduling;
   milestones: typeof milestones;
   notifications: typeof notifications;
+  projectContacts: typeof projectContacts;
   projects: typeof projects;
   reactions: typeof reactions;
+  savedViews: typeof savedViews;
   search: typeof search;
   seed: typeof seed;
   tasks: typeof tasks;

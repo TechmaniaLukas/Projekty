@@ -83,6 +83,7 @@ export default defineSchema({
     startDate: v.optional(v.number()),
     deadline: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    estimateHours: v.optional(v.number()),
     order: v.number(),
     createdBy: v.id("users"),
   })
@@ -205,6 +206,34 @@ export default defineSchema({
     .index("by_approver", ["approverId"])
     .index("by_approver_and_status", ["approverId", "status"])
     .index("by_due", ["dueDate"]),
+
+  projectContacts: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    company: v.optional(v.string()),
+    role: v.optional(v.string()),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    note: v.optional(v.string()),
+    createdBy: v.id("users"),
+  }).index("by_project", ["projectId"]),
+
+  checklistItems: defineTable({
+    taskId: v.id("tasks"),
+    text: v.string(),
+    done: v.boolean(),
+    order: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_task", ["taskId"]),
+
+  savedViews: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    route: v.string(), // např. "projekty"
+    params: v.string(), // serializované filtry (JSON)
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_route", ["userId", "route"]),
 
   timesheetSubmissions: defineTable({
     userId: v.id("users"),

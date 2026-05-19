@@ -150,6 +150,7 @@ export const create = mutation({
     priority: v.optional(priority),
     startDate: v.optional(v.number()),
     deadline: v.optional(v.number()),
+    estimateHours: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const me = await requireUser(ctx);
@@ -190,6 +191,7 @@ export const create = mutation({
       priority: args.priority ?? "medium",
       startDate: args.startDate,
       deadline: args.deadline,
+      estimateHours: args.estimateHours,
       completedAt: args.status === "done" ? Date.now() : undefined,
       order,
       createdBy: me._id,
@@ -230,6 +232,7 @@ export const update = mutation({
     priority: v.optional(priority),
     startDate: v.optional(v.union(v.number(), v.null())),
     deadline: v.optional(v.union(v.number(), v.null())),
+    estimateHours: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const me = await requireUser(ctx);
@@ -253,6 +256,10 @@ export const update = mutation({
     }
     if (args.deadline !== undefined) {
       patch.deadline = args.deadline === null ? undefined : args.deadline;
+    }
+    if (args.estimateHours !== undefined) {
+      patch.estimateHours =
+        args.estimateHours === null ? undefined : args.estimateHours;
     }
     const finalStart =
       args.startDate !== undefined

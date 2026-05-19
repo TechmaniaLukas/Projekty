@@ -234,6 +234,25 @@ export const listForUserRange = query({
   },
 });
 
+export const loggedForTask = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return 0;
+    const project = await ctx.db.get(task.projectId);
+    if (!project) return 0;
+    if (!(await canViewProject(ctx, me, project))) return 0;
+    const rows = await ctx.db
+      .query("timeEntries")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+    let total = 0;
+    for (const r of rows) total += r.hours;
+    return Math.round(total * 100) / 100;
+  },
+});
+
 export const myThisWeekTotal = query({
   args: {
     weekStart: v.optional(v.number()),

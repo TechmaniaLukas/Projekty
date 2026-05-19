@@ -45,6 +45,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
   const [priorityVal, setPriorityVal] = useState<Priority>("medium");
   const [startDate, setStartDate] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [estimateHours, setEstimateHours] = useState("");
   const [assigneeId, setAssigneeId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,6 +61,9 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     setPriorityVal(task.priority);
     setStartDate(toDateInputValue(task.startDate));
     setDeadline(toDateInputValue(task.deadline));
+    setEstimateHours(
+      task.estimateHours !== undefined ? String(task.estimateHours) : "",
+    );
     setAssigneeId(task.assigneeId ?? "");
     setError(null);
   }, [
@@ -70,6 +74,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     task?.priority,
     task?.startDate,
     task?.deadline,
+    task?.estimateHours,
     task?.assigneeId,
     dirty,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,6 +87,9 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     setPriorityVal(task.priority);
     setStartDate(toDateInputValue(task.startDate));
     setDeadline(toDateInputValue(task.deadline));
+    setEstimateHours(
+      task.estimateHours !== undefined ? String(task.estimateHours) : "",
+    );
     setAssigneeId(task.assigneeId ?? "");
     setDirty(false);
     setError(null);
@@ -132,6 +140,10 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
         priority: priorityVal,
         startDate: startMs ?? null,
         deadline: deadlineMs ?? null,
+        estimateHours:
+          estimateHours.trim() === ""
+            ? null
+            : Math.max(0, Number(estimateHours.replace(",", "."))) || null,
         assigneeId: assigneeId ? (assigneeId as Id<"users">) : null,
       });
       setDirty(false);
@@ -250,6 +262,22 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
             />
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="t-estimate">Odhad (h)</Label>
+            <Input
+              id="t-estimate"
+              type="number"
+              min="0"
+              step="0.5"
+              value={estimateHours}
+              placeholder="např. 8"
+              onChange={(e) => markDirty(setEstimateHours)(e.target.value)}
+              disabled={!canEdit || saving}
+            />
+          </div>
+          {task && <EstimateVsActual taskId={task._id} estimate={task.estimateHours} />}
+        </div>
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
             {error}
@@ -293,6 +321,13 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
         />
 
         <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
+          <h4 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+            Checklist / akceptační kritéria
+          </h4>
+          <TaskChecklist taskId={task._id} canEdit={canEdit} />
+        </div>
+
+        <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
           <h4 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Přílohy</h4>
           <TaskAttachments taskId={task._id} canUpload={canEdit} />
         </div>
@@ -308,5 +343,138 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
         </div>
       </div>
     </Drawer>
+  );
+}
+
+function EstimateVsActual({
+  taskId,
+  estimate,
+}: {
+  taskId: Id<"tasks">;
+  estimate?: number;
+}) {
+  const logged = useQuery(api.timeEntries.loggedForTask, { taskId });
+  if (logged === undefined) return <div />;
+  if (estimate === undefined && logged === 0) return <div />;
+  const over = estimate !== undefined && logged > estimate;
+  return (
+    <div className="flex flex-col justify-end">
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        Odhad vs. realita
+      </span>
+      <span className="text-sm">
+        {estimate !== undefined ? (
+          <span
+            className={
+              over
+                ? "font-medium text-red-600 dark:text-red-400"
+                : "font-medium text-slate-700 dark:text-slate-300"
+            }
+          >
+            {String(logged).replace(".", ",")} / {String(estimate).replace(".", ",")} h
+            {over ? " (překročeno)" : ""}
+          </span>
+        ) : (
+          <span className="text-slate-600 dark:text-slate-400">
+            zalogováno {String(logged).replace(".", ",")} h
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function TaskChecklist({
+  taskId,
+  canEdit,
+}: {
+  taskId: Id<"tasks">;
+  canEdit: boolean;
+}) {
+  const items = useQuery(api.checklists.listForTask, { taskId });
+  const add = useMutation(api.checklists.add);
+  const toggle = useMutation(api.checklists.toggle);
+  const remove = useMutation(api.checklists.remove);
+  const [text, setText] = useState("");
+
+  if (items === undefined)
+    return (
+      <p className="text-sm text-slate-400 dark:text-slate-500">Načítám…</p>
+    );
+
+  const done = items.filter((i) => i.done).length;
+
+  return (
+    <div className="space-y-2">
+      {items.length > 0 && (
+        <div className="mb-1 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            <div
+              className={
+                done === items.length
+                  ? "h-full bg-green-500"
+                  : "h-full bg-blue-500"
+              }
+              style={{ width: `${(done / items.length) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {done}/{items.length}
+          </span>
+        </div>
+      )}
+      {items.map((i) => (
+        <div key={i._id} className="group flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={i.done}
+            disabled={!canEdit}
+            onChange={() => toggle({ itemId: i._id })}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 dark:border-slate-600"
+          />
+          <span
+            className={
+              "flex-1 text-sm " +
+              (i.done
+                ? "text-slate-400 line-through dark:text-slate-500"
+                : "text-slate-700 dark:text-slate-300")
+            }
+          >
+            {i.text}
+          </span>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => remove({ itemId: i._id })}
+              className="text-slate-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+              aria-label="Smazat položku"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      {canEdit && (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!text.trim()) return;
+            await add({ taskId, text });
+            setText("");
+          }}
+          className="flex gap-2 pt-1"
+        >
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Přidat položku…"
+            className="h-8 text-sm"
+          />
+          <Button type="submit" size="sm" disabled={!text.trim()}>
+            Přidat
+          </Button>
+        </form>
+      )}
+    </div>
   );
 }
