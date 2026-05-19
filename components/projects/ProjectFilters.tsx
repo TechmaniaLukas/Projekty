@@ -2,9 +2,12 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
-import { Search, X } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { Search, X, Star, Bookmark } from "lucide-react";
+import { api } from "@/convex/_generated/api";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
   PROJECT_DEPARTMENT_OPTIONS,
@@ -27,6 +30,11 @@ export function ProjectFilters() {
   const includeArchived = params.get("archived") === "1";
   const q = params.get("q") ?? "";
 
+  const toast = useToast();
+  const savedViews = useQuery(api.savedViews.listMine, { route: "projekty" });
+  const saveView = useMutation(api.savedViews.save);
+  const removeView = useMutation(api.savedViews.remove);
+
   const set = useCallback(
     (updates: Record<string, string | null>) => {
       const next = new URLSearchParams(params.toString());
@@ -39,6 +47,8 @@ export function ProjectFilters() {
     },
     [params, pathname, router],
   );
+
+  const currentQs = params.toString();
 
   return (
     <div className="space-y-3">
@@ -100,6 +110,55 @@ export function ProjectFilters() {
           />
           Archivované
         </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Bookmark className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+        {(savedViews ?? []).map((v) => (
+          <span
+            key={v._id}
+            className="group inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white py-1 pl-3 pr-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            <button
+              type="button"
+              onClick={() =>
+                router.replace(v.params ? `${pathname}?${v.params}` : pathname)
+              }
+              className="hover:text-slate-900 dark:hover:text-slate-100"
+            >
+              {v.name}
+            </button>
+            <button
+              type="button"
+              onClick={() => removeView({ viewId: v._id })}
+              className="rounded-full p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-100 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-slate-800"
+              aria-label={`Smazat pohled ${v.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={async () => {
+            const name = prompt("Název pohledu (uloží aktuální filtry):");
+            if (!name || !name.trim()) return;
+            try {
+              await saveView({
+                name: name.trim(),
+                route: "projekty",
+                params: currentQs,
+              });
+              toast.success("Pohled uložen", name.trim());
+            } catch (err) {
+              toast.error("Chyba", err instanceof Error ? err.message : "");
+            }
+          }}
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          <Star className="h-3 w-3" />
+          Uložit pohled
+        </button>
       </div>
     </div>
   );

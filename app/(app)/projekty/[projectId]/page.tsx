@@ -16,6 +16,7 @@ import { ProjectActivity } from "@/components/projects/ProjectActivity";
 import { ProjectGantt } from "@/components/projects/ProjectGantt";
 import { ProjectTimeReport } from "@/components/projects/ProjectTimeReport";
 import { MilestoneList } from "@/components/milestones/MilestoneList";
+import { KanbanBoard } from "@/components/tasks/KanbanBoard";
 import { ProjectContacts } from "@/components/projects/ProjectContacts";
 import { ExportButton } from "@/components/projects/ExportButton";
 import { useToast } from "@/components/ui/toast";
@@ -70,6 +71,7 @@ export default function ProjectDetailPage({
     | "contacts"
     | "activity"
   >(initialTab);
+  const [taskView, setTaskView] = useState<"tree" | "kanban">("tree");
 
   if (project === undefined) {
     return <div className="text-sm text-slate-500 dark:text-slate-400">Načítám…</div>;
@@ -212,7 +214,43 @@ export default function ProjectDetailPage({
         </nav>
       </div>
 
-      {tab === "tasks" && <TaskTree projectId={project._id} project={project} />}
+      {tab === "tasks" && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <div className="inline-flex rounded-md border border-slate-300 p-0.5 text-sm dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setTaskView("tree")}
+                className={cn(
+                  "rounded px-3 py-1",
+                  taskView === "tree"
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400",
+                )}
+              >
+                Strom
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskView("kanban")}
+                className={cn(
+                  "rounded px-3 py-1",
+                  taskView === "kanban"
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400",
+                )}
+              >
+                Tabule
+              </button>
+            </div>
+          </div>
+          {taskView === "tree" ? (
+            <TaskTree projectId={project._id} project={project} />
+          ) : (
+            <KanbanBoard projectId={project._id} project={project} />
+          )}
+        </div>
+      )}
       {tab === "milestones" && (
         <MilestoneList projectId={project._id} canManage={canEdit} />
       )}

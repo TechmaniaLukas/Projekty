@@ -44,7 +44,12 @@ export function MyTasks() {
       </CardHeader>
       <CardContent>
         {sorted.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Aktuálně nemáš přiřazené žádné aktivní úkoly.</p>
+          <div className="py-2 text-sm text-slate-500 dark:text-slate-400">
+            <p>Aktuálně nemáš přiřazené žádné aktivní úkoly. 🎉</p>
+            <p className="mt-1 text-xs">
+              Nové úkoly se ti objeví tady, jakmile ti je někdo přiřadí.
+            </p>
+          </div>
         ) : (
           <div className="space-y-2">
             {sorted.slice(0, 8).map((t) => {
