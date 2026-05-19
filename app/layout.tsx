@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ConvexClientProvider } from "@/components/layout/ConvexClientProvider";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
 import "./globals.css";
 
 const themeBootScript = `try{var t=localStorage.getItem('tm-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.classList.add('dark');}catch(e){}`;
@@ -43,6 +44,7 @@ export default function RootLayout({
         <ThemeProvider>
           <ConvexClientProvider>{children}</ConvexClientProvider>
         </ThemeProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

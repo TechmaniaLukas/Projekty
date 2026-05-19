@@ -1,0 +1,180 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
+import { ROLE_LABELS, DEPARTMENT_LABELS } from "@/lib/constants";
+
+type NotifyMode = "instant" | "daily" | "off";
+
+const NOTIFY_OPTIONS: { value: NotifyMode; label: string; desc: string }[] = [
+  {
+    value: "instant",
+    label: "Okamžitě",
+    desc: "E-mail při každé události (přiřazení, komentář, schválení…).",
+  },
+  {
+    value: "daily",
+    label: "Denní souhrn",
+    desc: "Jen jeden souhrnný e-mail denně. V appce notifikace vidíš hned.",
+  },
+  {
+    value: "off",
+    label: "Vypnuto",
+    desc: "Žádné e-maily. Notifikace jen v appce (zvoneček).",
+  },
+];
+
+export default function NastaveniPage() {
+  const me = useQuery(api.users.me);
+  const updateName = useMutation(api.users.updateMyName);
+  const updateNotify = useMutation(api.users.updateMyNotifyPref);
+  const toast = useToast();
+
+  const [name, setName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
+  useEffect(() => {
+    if (me?.name) setName(me.name);
+  }, [me?.name]);
+
+  if (me === undefined) {
+    return <div className="text-sm text-slate-500 dark:text-slate-400">Načítám…</div>;
+  }
+  if (me === null) {
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        Nepřihlášený uživatel.
+      </div>
+    );
+  }
+
+  const currentMode: NotifyMode = (me.notifyEmail as NotifyMode) ?? "instant";
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        Nastavení
+      </h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profil</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Jméno</Label>
+            <div className="flex gap-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jan Novák"
+              />
+              <Button
+                disabled={savingName || !name.trim() || name === me.name}
+                onClick={async () => {
+                  setSavingName(true);
+                  try {
+                    await updateName({ name: name.trim() });
+                    toast.success("Jméno uloženo");
+                  } catch (err) {
+                    toast.error(
+                      "Chyba",
+                      err instanceof Error ? err.message : "",
+                    );
+                  } finally {
+                    setSavingName(false);
+                  }
+                }}
+              >
+                Uložit
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">
+                E-mail:{" "}
+              </span>
+              <span className="font-medium">{me.email}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">
+                Role:{" "}
+              </span>
+              <span className="font-medium">
+                {me.role ? ROLE_LABELS[me.role] : "—"}
+                {me.department
+                  ? ` · ${DEPARTMENT_LABELS[me.department]}`
+                  : ""}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>E-mailové notifikace</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {NOTIFY_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={async () => {
+                if (o.value === currentMode) return;
+                try {
+                  await updateNotify({ notifyEmail: o.value });
+                  toast.success("Preference uložena");
+                } catch (err) {
+                  toast.error(
+                    "Chyba",
+                    err instanceof Error ? err.message : "",
+                  );
+                }
+              }}
+              className={
+                "flex w-full items-start gap-3 rounded-md border p-3 text-left transition-colors " +
+                (o.value === currentMode
+                  ? "border-blue-500 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30"
+                  : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50")
+              }
+            >
+              <span
+                className={
+                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border " +
+                  (o.value === currentMode
+                    ? "border-blue-600 bg-blue-600"
+                    : "border-slate-400")
+                }
+              >
+                {o.value === currentMode && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {o.label}
+                </span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  {o.desc}
+                </span>
+              </span>
+            </button>
+          ))}
+          <p className="pt-1 text-xs text-slate-400 dark:text-slate-500">
+            „Denní souhrn" zatím funguje jako „vypnuté e-maily" — souhrnný
+            e-mail bude doplněn samostatně. Notifikace v appce (zvoneček)
+            chodí vždy.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

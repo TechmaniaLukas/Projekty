@@ -112,6 +112,20 @@ export const updateMyName = mutation({
   },
 });
 
+export const updateMyNotifyPref = mutation({
+  args: {
+    notifyEmail: v.union(
+      v.literal("instant"),
+      v.literal("daily"),
+      v.literal("off"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    await ctx.db.patch(me._id, { notifyEmail: args.notifyEmail });
+  },
+});
+
 export const inviteUser = mutation({
   args: {
     email: v.string(),

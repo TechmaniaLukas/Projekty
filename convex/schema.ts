@@ -31,6 +31,10 @@ export default defineSchema({
     role: v.optional(role),
     department: v.optional(department),
     isActive: v.optional(v.boolean()),
+    // E-mailové notifikace: instant (default) | daily (jen do digestu) | off
+    notifyEmail: v.optional(
+      v.union(v.literal("instant"), v.literal("daily"), v.literal("off")),
+    ),
   })
     .index("email", ["email"])
     .index("phone", ["phone"])

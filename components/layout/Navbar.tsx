@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import { LogOut, Menu, Search } from "lucide-react";
@@ -62,7 +63,11 @@ export function Navbar({ onMobileMenu, onSearch }: Props) {
         {me && <ThemeToggleMobile />}
         {me && <NotificationBell />}
         {me && (
-          <div className="flex items-center gap-2">
+          <Link
+            href="/nastaveni"
+            className="flex items-center gap-2 rounded-md p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+            title="Nastavení profilu a notifikací"
+          >
             <Avatar name={me.name ?? null} email={me.email ?? null} size="md" />
             <div className="hidden sm:block text-right leading-tight">
               <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -73,7 +78,7 @@ export function Navbar({ onMobileMenu, onSearch }: Props) {
                 {me.department ? ` · ${DEPARTMENT_LABELS[me.department]}` : ""}
               </div>
             </div>
-          </div>
+          </Link>
         )}
         <button
           type="button"

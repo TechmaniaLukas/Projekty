@@ -36,11 +36,16 @@ export async function emit(ctx: MutationCtx, args: EmitArgs): Promise<void> {
     taskId: args.taskId,
     commentId: args.commentId,
   });
-  await ctx.scheduler.runAfter(
-    EMAIL_DEBOUNCE_MS,
-    internal.email.sendNotificationEmail,
-    { notificationId },
-  );
+  // In-app notifikace vznikne vždy; okamžitý e-mail jen pokud uživatel
+  // nemá preferenci "daily" (jen do digestu) nebo "off".
+  const pref = recipient.notifyEmail ?? "instant";
+  if (pref === "instant") {
+    await ctx.scheduler.runAfter(
+      EMAIL_DEBOUNCE_MS,
+      internal.email.sendNotificationEmail,
+      { notificationId },
+    );
+  }
 }
 
 export function actorName(user: Doc<"users"> | null | undefined): string {
