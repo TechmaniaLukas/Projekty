@@ -36,6 +36,13 @@ export default function StatisticsPage() {
       </div>
     );
   }
+  if (!stats) {
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        Statistiky nejsou dostupné.
+      </div>
+    );
+  }
 
   const taskStatusKeys: TaskStatus[] = ["todo", "in_progress", "blocked", "review", "done"];
   const priorityKeys: Priority[] = ["critical", "high", "medium", "low"];

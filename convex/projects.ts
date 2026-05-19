@@ -442,7 +442,16 @@ export const addMember = mutation({
 export const stats = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
+    const me = await requireUser(ctx);
+    // Celofiremní agregáty jen pro management (shoduje se s /statistiky).
+    if (
+      !isAdmin(me) &&
+      !isPm(me) &&
+      !isDirector(me) &&
+      !isDeptLead(me)
+    ) {
+      return null;
+    }
     const now = Date.now();
     const weekAgo = now - 7 * 24 * 3600 * 1000;
     const monthAgo = now - 30 * 24 * 3600 * 1000;
