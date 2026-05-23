@@ -21,6 +21,7 @@ const SEED_TEMPLATE_NAMES = [
   "Vývoj nové expozice",
   "Nový exponát",
   "Stavební práce",
+  "Vývoj exponátu (detailní)",
 ];
 
 /**
@@ -577,5 +578,401 @@ export const seedDevData = mutation({
       projects: { project1, project2, project3 },
       templates: { tplExpozice, tplExponat, tplStavba },
     };
+  },
+});
+
+/**
+ * Detailní šablona "Vývoj exponátu" — realistická struktura podle workflow
+ * Techmania (9 fází, ~30 úkolů s odhady, akceptační checklisty u klíčových
+ * úkolů). Idempotentní — opakované spuštění doplní jen chybějící úkoly.
+ */
+export const seedExhibitTemplate = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const admin = await requireRole(ctx, ["admin"]);
+    const NAME = "Vývoj exponátu (detailní)";
+
+    let tpl = await ctx.db
+      .query("projects")
+      .filter((q) => q.eq(q.field("name"), NAME))
+      .first();
+    if (!tpl) {
+      const id = await ctx.db.insert("projects", {
+        name: NAME,
+        description:
+          "Kompletní workflow vývoje nového exponátu od konceptu po předání do provozu. 9 fází, milníky M1–M6 doplň v UI podle konkrétního projektu.",
+        ownerId: admin._id,
+        department: "cross",
+        status: "planning",
+        priority: "medium",
+        createdBy: admin._id,
+        isTemplate: true,
+      });
+      tpl = await ctx.db.get(id);
+    }
+    if (!tpl) throw new Error("template insert failed");
+    const tplId = tpl._id;
+
+    const ensureTask = async (
+      title: string,
+      args: {
+        parentTaskId?: Id<"tasks">;
+        order: number;
+        priority?: "low" | "medium" | "high" | "critical";
+        description?: string;
+        estimateHours?: number;
+      },
+    ): Promise<Id<"tasks">> => {
+      const all = await ctx.db
+        .query("tasks")
+        .withIndex("by_project", (q) => q.eq("projectId", tplId))
+        .collect();
+      const existing = all.find(
+        (t) => t.title === title && t.parentTaskId === args.parentTaskId,
+      );
+      if (existing) {
+        // Doplň odhad/popis, kdyby chybělo
+        const patch: Record<string, unknown> = {};
+        if (
+          args.estimateHours !== undefined &&
+          existing.estimateHours === undefined
+        )
+          patch.estimateHours = args.estimateHours;
+        if (args.description && !existing.description)
+          patch.description = args.description;
+        if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
+        return existing._id;
+      }
+      return await ctx.db.insert("tasks", {
+        projectId: tplId,
+        parentTaskId: args.parentTaskId,
+        title,
+        description: args.description,
+        status: "todo",
+        priority: args.priority ?? "medium",
+        order: args.order,
+        estimateHours: args.estimateHours,
+        createdBy: admin._id,
+      });
+    };
+
+    const ensureChecklist = async (
+      taskId: Id<"tasks">,
+      items: string[],
+    ) => {
+      const existing = await ctx.db
+        .query("checklistItems")
+        .withIndex("by_task", (q) => q.eq("taskId", taskId))
+        .collect();
+      if (existing.length > 0) return; // už nějaký checklist je → nenahrazuj
+      let order = 0;
+      for (const text of items) {
+        await ctx.db.insert("checklistItems", {
+          taskId,
+          text,
+          done: false,
+          order: order++,
+          createdBy: admin._id,
+        });
+      }
+    };
+
+    // Fáze 1 — Koncept
+    const f1 = await ensureTask("1. Koncept a schválení", {
+      order: 0,
+      priority: "high",
+    });
+    const brief = await ensureTask("Sběr požadavků a brief", {
+      parentTaskId: f1,
+      order: 0,
+      estimateHours: 8,
+    });
+    await ensureChecklist(brief, [
+      "Definovaný cílový věk návštěvníků",
+      "Vzdělávací cíl exponátu",
+      "Předpokládaný prostor v expozici",
+      "Rozpočtový rámec",
+    ]);
+    await ensureTask("Návrh exponátu + vizualizace", {
+      parentTaskId: f1,
+      order: 1,
+      estimateHours: 16,
+    });
+    const norm = await ensureTask("Bezpečnostní a normové posouzení", {
+      parentTaskId: f1,
+      order: 2,
+      estimateHours: 4,
+    });
+    await ensureChecklist(norm, [
+      "ČSN EN 71 (bezpečnost hraček) — relevantní body",
+      "Elektrobezpečnost (pokud relevantní)",
+      "Hořlavost materiálů",
+      "Ochrana před úrazem (ostré hrany, skřípnutí)",
+    ]);
+    await ensureTask("Schválení vedení + rozpočet (M1)", {
+      parentTaskId: f1,
+      order: 3,
+      priority: "critical",
+      estimateHours: 4,
+      description:
+        "Milník M1 — Schválený koncept. Po dokončení založ v záložce Milníky a přiřaď ředitele jako schvalovatele.",
+    });
+
+    // Fáze 2 — Konstrukce
+    const f2 = await ensureTask("2. Konstrukční dokumentace", { order: 1 });
+    await ensureTask("Konstrukční dokumentace (CAD)", {
+      parentTaskId: f2,
+      order: 0,
+      estimateHours: 40,
+    });
+    const bom = await ensureTask("Specifikace materiálu a komponent (BOM)", {
+      parentTaskId: f2,
+      order: 1,
+      estimateHours: 8,
+    });
+    await ensureChecklist(bom, [
+      "Hlavní materiály a rozměry",
+      "Spojovací materiál",
+      "Povrchové úpravy",
+      "Certifikáty / atesty",
+    ]);
+    await ensureTask("Elektrodokumentace", {
+      parentTaskId: f2,
+      order: 2,
+      estimateHours: 16,
+      description: "Pouze pokud exponát obsahuje elektronické / silnoproudé části.",
+    });
+    await ensureTask("Vlastní výroba vs. subdodávka — rozhodnutí", {
+      parentTaskId: f2,
+      order: 3,
+      estimateHours: 4,
+    });
+    await ensureTask("Schválení konstrukce (M2)", {
+      parentTaskId: f2,
+      order: 4,
+      priority: "high",
+      description:
+        "Milník M2 — Schvaluje vedoucí Výroby. Vytvoř milník a přiřaď.",
+    });
+
+    // Fáze 3 — Materiál
+    const f3 = await ensureTask("3. Materiál a subdodávky", { order: 2 });
+    await ensureTask("Cenová poptávka u dodavatelů", {
+      parentTaskId: f3,
+      order: 0,
+      estimateHours: 8,
+      description:
+        "Min. 3 nabídky, srovnání kvalita/cena/termín. Dodavatele přidej do záložky Kontakty.",
+    });
+    await ensureTask("Výběr dodavatelů + smlouvy", {
+      parentTaskId: f3,
+      order: 1,
+      estimateHours: 4,
+    });
+    await ensureTask("Objednávka materiálu", {
+      parentTaskId: f3,
+      order: 2,
+      estimateHours: 2,
+    });
+    await ensureTask("Sledování dodacích termínů", {
+      parentTaskId: f3,
+      order: 3,
+      description: "Průběžně — kontaktuj dodavatele 2× týdně.",
+    });
+
+    // Fáze 4 — Prototyp
+    const f4 = await ensureTask("4. Výroba prototypu", { order: 3 });
+    await ensureTask("Výroba mechanických částí", {
+      parentTaskId: f4,
+      order: 0,
+      estimateHours: 40,
+    });
+    await ensureTask("Výroba elektroniky / zapojení", {
+      parentTaskId: f4,
+      order: 1,
+      estimateHours: 24,
+    });
+    await ensureTask("Vývoj SW / interakce", {
+      parentTaskId: f4,
+      order: 2,
+      estimateHours: 40,
+      description: "Pouze u digitálních exponátů. Řešitel: IT oddělení.",
+    });
+    await ensureTask("Kompletace prototypu", {
+      parentTaskId: f4,
+      order: 3,
+      estimateHours: 16,
+    });
+
+    // Fáze 5 — Testování
+    const f5 = await ensureTask("5. Testování", { order: 4 });
+    const funcTest = await ensureTask("Funkční test", {
+      parentTaskId: f5,
+      order: 0,
+      estimateHours: 8,
+    });
+    await ensureChecklist(funcTest, [
+      "Všechny scénáře interakce projdou",
+      "Krajní stavy (overload, opakování)",
+      "Reset / návrat do výchozího stavu funguje",
+      "Spotřeba a tepelný režim v normě",
+    ]);
+    const safetyTest = await ensureTask("Bezpečnostní revize", {
+      parentTaskId: f5,
+      order: 1,
+      priority: "critical",
+      estimateHours: 4,
+      description: "Externí revizní technik — přidej kontakt do záložky Kontakty.",
+    });
+    await ensureChecklist(safetyTest, [
+      "Elektrorevize (pokud relevantní)",
+      "Mechanická bezpečnost",
+      "Revizní protokol jako příloha",
+    ]);
+    const userTest = await ensureTask(
+      "Uživatelský test s návštěvníky",
+      { parentTaskId: f5, order: 2, estimateHours: 16 },
+    );
+    await ensureChecklist(userTest, [
+      "Min. 10 dětí ve 3 věkových skupinách",
+      "Dotazník po interakci",
+      "Strukturované pozorování",
+      "Sepsání zjištění",
+    ]);
+    await ensureTask("Vyhodnocení a seznam úprav", {
+      parentTaskId: f5,
+      order: 3,
+      estimateHours: 4,
+    });
+    await ensureTask("Prototyp prošel testy (M3)", {
+      parentTaskId: f5,
+      order: 4,
+      priority: "high",
+      description:
+        "Milník M3 — Schvaluje vedoucí Výroby (+ vedoucí IT pokud SW).",
+    });
+
+    // Fáze 6 — Úpravy a finální výroba
+    const f6 = await ensureTask("6. Úpravy a finální výroba", { order: 5 });
+    await ensureTask("Zapracování úprav", {
+      parentTaskId: f6,
+      order: 0,
+      estimateHours: 16,
+    });
+    await ensureTask("Finální výroba sériových dílů", {
+      parentTaskId: f6,
+      order: 1,
+      estimateHours: 60,
+    });
+    await ensureTask("Povrchové úpravy a finalizace", {
+      parentTaskId: f6,
+      order: 2,
+      estimateHours: 16,
+    });
+    await ensureTask("Finální výroba dokončena (M4)", {
+      parentTaskId: f6,
+      order: 3,
+      description: "Milník M4 — Schvaluje vedoucí Výroby.",
+    });
+
+    // Fáze 7 — Grafika a obsah
+    const f7 = await ensureTask("7. Grafika a obsah", { order: 6 });
+    const texts = await ensureTask("Texty CS + EN", {
+      parentTaskId: f7,
+      order: 0,
+      estimateHours: 8,
+    });
+    await ensureChecklist(texts, [
+      "Vhodný věk a srozumitelnost (ověřeno popularizátorem)",
+      "Dvojjazyčně CS / EN",
+      "Klíčové bezpečnostní pokyny",
+    ]);
+    await ensureTask("Grafický design popisků", {
+      parentTaskId: f7,
+      order: 1,
+      estimateHours: 12,
+    });
+    await ensureTask("Tisk a aplikace popisků", {
+      parentTaskId: f7,
+      order: 2,
+      estimateHours: 4,
+    });
+    await ensureTask("Multimédia (video/audio)", {
+      parentTaskId: f7,
+      order: 3,
+      estimateHours: 16,
+      description: "Pouze pokud relevantní.",
+    });
+
+    // Fáze 8 — Instalace
+    const f8 = await ensureTask("8. Instalace v expozici", {
+      order: 7,
+      priority: "high",
+    });
+    await ensureTask("Příprava místa v expozici", {
+      parentTaskId: f8,
+      order: 0,
+      estimateHours: 8,
+      description: "Facility.",
+    });
+    await ensureTask("Elektrická / síťová příprava", {
+      parentTaskId: f8,
+      order: 1,
+      estimateHours: 4,
+      description: "IT + Facility.",
+    });
+    await ensureTask("Instalace exponátu na místě", {
+      parentTaskId: f8,
+      order: 2,
+      estimateHours: 16,
+    });
+    await ensureTask("Finální seřízení a kalibrace", {
+      parentTaskId: f8,
+      order: 3,
+      estimateHours: 4,
+    });
+    await ensureTask("Instalace dokončena (M5)", {
+      parentTaskId: f8,
+      order: 4,
+      description: "Milník M5 — Schvaluje vedoucí Facility.",
+    });
+
+    // Fáze 9 — Akceptace a předání
+    const f9 = await ensureTask("9. Akceptace a předání", { order: 8 });
+    await ensureTask("Bezpečnostní revize na místě + protokol", {
+      parentTaskId: f9,
+      order: 0,
+      priority: "critical",
+      estimateHours: 4,
+    });
+    await ensureTask("Soft-opening (interní pilot)", {
+      parentTaskId: f9,
+      order: 1,
+      estimateHours: 8,
+    });
+    const training = await ensureTask("Školení průvodců", {
+      parentTaskId: f9,
+      order: 2,
+      estimateHours: 4,
+    });
+    await ensureChecklist(training, [
+      "Použití a interakce s exponátem",
+      "Časté otázky návštěvníků",
+      "Krizové scénáře (porucha, úraz)",
+      "Reset / restart exponátu",
+    ]);
+    await ensureTask("Údržbová dokumentace", {
+      parentTaskId: f9,
+      order: 3,
+      estimateHours: 4,
+    });
+    await ensureTask("Akceptace a předání do provozu (M6)", {
+      parentTaskId: f9,
+      order: 4,
+      priority: "high",
+      description: "Milník M6 — Schvaluje ředitel. Závisí na M5.",
+    });
+
+    return { ok: true, templateId: tplId };
   },
 });

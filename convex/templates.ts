@@ -231,9 +231,25 @@ export const cloneToProject = mutation({
           status: "todo",
           priority: t.priority,
           deadline: undefined,
+          estimateHours: t.estimateHours,
           order: order++,
           createdBy: me._id,
         });
+        // Klon checklistů z šablonové úlohy
+        const checklist = await ctx.db
+          .query("checklistItems")
+          .withIndex("by_task", (q) => q.eq("taskId", t._id))
+          .collect();
+        let ciOrder = 0;
+        for (const ci of checklist.sort((a, b) => a.order - b.order)) {
+          await ctx.db.insert("checklistItems", {
+            taskId: newId,
+            text: ci.text,
+            done: false,
+            order: ciOrder++,
+            createdBy: me._id,
+          });
+        }
         queue.push({ oldParent: t._id as string, newParent: newId });
       }
     }
