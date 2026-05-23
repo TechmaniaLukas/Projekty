@@ -27,10 +27,12 @@ export default function UsersAdminPage() {
   const inviteUser = useMutation(api.users.inviteUser);
   const seed = useMutation(api.seed.seedDevData);
   const purge = useMutation(api.seed.purgeDevData);
+  const seedExhibit = useMutation(api.seed.seedExhibitTemplate);
   const toast = useToast();
 
   const [seedBusy, setSeedBusy] = useState(false);
   const [purgeBusy, setPurgeBusy] = useState(false);
+  const [exhibitBusy, setExhibitBusy] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -217,6 +219,36 @@ export default function UsersAdminPage() {
               }}
             >
               {purgeBusy ? "Mažu…" : "Smazat ukázková data"}
+            </Button>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              <strong>Šablona „Vývoj exponátu"</strong> — detailní 9-fázový
+              workflow s ~30 úkoly, odhady hodin a akceptačními checklisty
+              (Techmania-specific). Idempotentní: opakované spuštění doplní
+              jen chybějící části. Šablona pak bude v sekci Šablony.
+            </p>
+            <Button
+              variant="outline"
+              disabled={exhibitBusy}
+              className="mt-3"
+              onClick={async () => {
+                setExhibitBusy(true);
+                try {
+                  await seedExhibit({});
+                  toast.success("Šablona vytvořena / aktualizována");
+                } catch (err) {
+                  toast.error(
+                    "Chyba",
+                    err instanceof Error ? err.message : "",
+                  );
+                } finally {
+                  setExhibitBusy(false);
+                }
+              }}
+            >
+              {exhibitBusy ? "Pracuji…" : "Vytvořit šablonu Vývoj exponátu"}
             </Button>
           </div>
 
