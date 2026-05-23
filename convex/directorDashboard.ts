@@ -22,7 +22,7 @@ export const executiveSummary = query({
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [projects, tasks, users, entries, allMilestones] = await Promise.all([
+    const [allProjects, allTasks, users, entries, allMilestones] = await Promise.all([
       ctx.db.query("projects").collect(),
       ctx.db.query("tasks").collect(),
       ctx.db.query("users").collect(),
@@ -32,6 +32,12 @@ export const executiveSummary = query({
         .collect(),
       ctx.db.query("milestones").collect(),
     ]);
+    // Vyloučit šablony z agregátů (reálné projekty jen).
+    const projects = allProjects.filter((p) => p.isTemplate !== true);
+    const realProjectIds = new Set(projects.map((p) => p._id as string));
+    const tasks = allTasks.filter((t) =>
+      realProjectIds.has(t.projectId as string),
+    );
 
     // KPI top-line
     const activeProjects = projects.filter(
@@ -102,6 +108,7 @@ export const executiveSummary = query({
     const milestones = allMilestones
       .filter(
         (m) =>
+          realProjectIds.has(m.projectId as string) &&
           m.dueDate >= now &&
           m.dueDate <= sixtyDaysAhead &&
           m.status !== "approved",
@@ -221,7 +228,7 @@ export const monthlyReport = query({
     const start = new Date(args.year, args.month - 1, 1).getTime();
     const end = new Date(args.year, args.month, 1).getTime();
 
-    const [projects, tasks, users, entries, milestones] = await Promise.all([
+    const [allProjects, allTasks, users, entries, allMonthlyMilestones] = await Promise.all([
       ctx.db.query("projects").collect(),
       ctx.db.query("tasks").collect(),
       ctx.db.query("users").collect(),
@@ -233,6 +240,13 @@ export const monthlyReport = query({
         .collect(),
       ctx.db.query("milestones").collect(),
     ]);
+    // Šablony nepatří do reportu.
+    const projects = allProjects.filter((p) => p.isTemplate !== true);
+    const realIds = new Set(projects.map((p) => p._id as string));
+    const tasks = allTasks.filter((t) => realIds.has(t.projectId as string));
+    const milestones = allMonthlyMilestones.filter((m) =>
+      realIds.has(m.projectId as string),
+    );
 
     const departments = ["it", "facility", "vyroba", "cross"] as const;
     const byDept = departments.map((dep) => {

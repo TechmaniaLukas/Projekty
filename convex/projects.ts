@@ -456,16 +456,19 @@ export const stats = query({
     const weekAgo = now - 7 * 24 * 3600 * 1000;
     const monthAgo = now - 30 * 24 * 3600 * 1000;
 
-    const projects = await ctx.db.query("projects").collect();
+    const allProjects = await ctx.db.query("projects").collect();
     const tasks = await ctx.db.query("tasks").collect();
     const users = await ctx.db.query("users").collect();
+    // Statistiky počítají jen reálné projekty (vyloučit šablony a archivované).
+    const projects = allProjects.filter(
+      (p) => p.isTemplate !== true && p.status !== "archived",
+    );
 
     const projectsByDept: Record<string, { active: number; on_hold: number; done: number; planning: number; total: number }> = {};
     for (const dep of ["it", "facility", "vyroba", "cross"]) {
       projectsByDept[dep] = { active: 0, on_hold: 0, done: 0, planning: 0, total: 0 };
     }
     for (const p of projects) {
-      if (p.status === "archived") continue;
       const bucket = projectsByDept[p.department];
       if (!bucket) continue;
       bucket.total += 1;
@@ -495,13 +498,16 @@ export const stats = query({
     let completedThisWeek = 0;
     let completedThisMonth = 0;
 
-    const archivedProjectIds = new Set(
-      projects.filter((p) => p.status === "archived").map((p) => p._id),
+    // Vyloučit z task statistik všechny tasky z archivovaných projektů i šablon.
+    const excludedProjectIds = new Set(
+      allProjects
+        .filter((p) => p.isTemplate === true || p.status === "archived")
+        .map((p) => p._id as string),
     );
 
     const openTasksByAssignee: Record<string, number> = {};
     for (const t of tasks) {
-      if (archivedProjectIds.has(t.projectId)) continue;
+      if (excludedProjectIds.has(t.projectId as string)) continue;
       tasksByStatus[t.status] = (tasksByStatus[t.status] ?? 0) + 1;
       tasksByPriority[t.priority] = (tasksByPriority[t.priority] ?? 0) + 1;
       if (t.status !== "done") {
@@ -545,8 +551,10 @@ export const stats = query({
       completedThisMonth,
       topAssignees,
       totals: {
-        projects: projects.filter((p) => p.status !== "archived").length,
-        tasks: tasks.length,
+        projects: projects.length, // už filtrováno (bez archived/template)
+        tasks: tasks.filter(
+          (t) => !excludedProjectIds.has(t.projectId as string),
+        ).length,
       },
     };
   },
