@@ -106,13 +106,17 @@ export const executiveSummary = query({
     // Nadcházející milníky napříč všemi odděleními (60 dní) — reálná entita
     const projectById = new Map(projects.map((p) => [p._id as string, p]));
     const milestones = allMilestones
-      .filter(
-        (m) =>
-          realProjectIds.has(m.projectId as string) &&
+      .filter((m) => {
+        if (!realProjectIds.has(m.projectId as string)) return false;
+        // Archivovaný projekt nemá co dělat v "nadcházejících milnících".
+        const p = projectById.get(m.projectId as string);
+        if (p && p.status === "archived") return false;
+        return (
           m.dueDate >= now &&
           m.dueDate <= sixtyDaysAhead &&
-          m.status !== "approved",
-      )
+          m.status !== "approved"
+        );
+      })
       .sort((a, b) => a.dueDate - b.dueDate)
       .slice(0, 15)
       .map((m) => {

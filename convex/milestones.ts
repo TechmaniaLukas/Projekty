@@ -417,6 +417,8 @@ export const upcomingForMe = query({
         projectCache.set(m.projectId as string, project);
       }
       if (!project) continue;
+      // Archivovaný projekt = mimo provoz; jeho milníky neukazuj v "Nadcházející".
+      if (project.status === "archived") continue;
       if (!(await canViewProject(ctx, me, project))) continue;
 
       const linked = await ctx.db
@@ -459,6 +461,7 @@ export const listForProjects = query({
     for (const pid of args.projectIds) {
       const project = await ctx.db.get(pid);
       if (!project) continue;
+      if (project.status === "archived") continue;
       if (!(await canViewProject(ctx, me, project))) continue;
       const items = await ctx.db
         .query("milestones")
@@ -504,6 +507,9 @@ export const myPendingApprovals = query({
 
     const result = [];
     for (const m of items) {
+      // Přeskoč milníky archivovaných projektů — schvalovat ho už nedává smysl.
+      const proj = projectById.get(m.projectId as string);
+      if (proj && proj.status === "archived") continue;
       const linked = await ctx.db
         .query("tasks")
         .withIndex("by_milestone", (q) => q.eq("milestoneId", m._id))
