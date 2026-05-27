@@ -106,10 +106,20 @@ export const listMyTasks = query({
       .query("tasks")
       .withIndex("by_assignee", (q) => q.eq("assigneeId", me._id))
       .collect();
-    if (args.onlyActive) {
-      return tasks.filter((t) => t.status !== "done");
+    // Vyloučit úkoly z archivovaných projektů a šablon — nepatří na dashboard.
+    const projectCache = new Map<Id<"projects">, Doc<"projects"> | null>();
+    const out: Doc<"tasks">[] = [];
+    for (const t of tasks) {
+      let p = projectCache.get(t.projectId);
+      if (p === undefined) {
+        p = await ctx.db.get(t.projectId);
+        projectCache.set(t.projectId, p);
+      }
+      if (!p || p.status === "archived" || p.isTemplate === true) continue;
+      if (args.onlyActive && t.status === "done") continue;
+      out.push(t);
     }
-    return tasks;
+    return out;
   },
 });
 
@@ -132,6 +142,7 @@ export const listUpcoming = query({
         projectCache.set(t.projectId, project);
       }
       if (!project) continue;
+      if (project.status === "archived" || project.isTemplate === true) continue;
       if (await canViewProject(ctx, me, project)) accessible.push(t);
     }
     accessible.sort((a, b) => (a.deadline ?? 0) - (b.deadline ?? 0));
