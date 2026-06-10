@@ -20,8 +20,10 @@ import {
   TASK_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   ROLE_LABELS,
+  SKILL_OPTIONS,
   type TaskStatus,
   type Priority,
+  type Skill,
 } from "@/lib/constants";
 import { toDateInputValue, fromDateInputValue, formatDate, formatDateTime } from "@/lib/dates";
 
@@ -46,6 +48,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
   const [startDate, setStartDate] = useState("");
   const [deadline, setDeadline] = useState("");
   const [estimateHours, setEstimateHours] = useState("");
+  const [skillVal, setSkillVal] = useState<string>("");
   const [assigneeId, setAssigneeId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,6 +67,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     setEstimateHours(
       task.estimateHours !== undefined ? String(task.estimateHours) : "",
     );
+    setSkillVal(task.skill ?? "");
     setAssigneeId(task.assigneeId ?? "");
     setError(null);
   }, [
@@ -75,6 +79,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     task?.startDate,
     task?.deadline,
     task?.estimateHours,
+    task?.skill,
     task?.assigneeId,
     dirty,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,6 +95,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
     setEstimateHours(
       task.estimateHours !== undefined ? String(task.estimateHours) : "",
     );
+    setSkillVal(task.skill ?? "");
     setAssigneeId(task.assigneeId ?? "");
     setDirty(false);
     setError(null);
@@ -144,6 +150,7 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
           estimateHours.trim() === ""
             ? null
             : Math.max(0, Number(estimateHours.replace(",", "."))) || null,
+        skill: skillVal ? (skillVal as Skill) : null,
         assigneeId: assigneeId ? (assigneeId as Id<"users">) : null,
       });
       setDirty(false);
@@ -277,6 +284,24 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
             />
           </div>
           {task && <EstimateVsActual taskId={task._id} estimate={task.estimateHours} />}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="t-skill">Disciplína</Label>
+            <Select
+              id="t-skill"
+              value={skillVal}
+              onChange={(e) => markDirty(setSkillVal)(e.target.value)}
+              disabled={!canEdit || saving}
+            >
+              <option value="">— Dle řešitele —</option>
+              {SKILL_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">

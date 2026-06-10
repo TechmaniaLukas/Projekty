@@ -13,11 +13,12 @@ import { logAction } from "./lib/audit";
 import { propagateDeadlineChange } from "./lib/scheduling";
 import { syncMilestoneDueDate } from "./milestones";
 import { TASK_STATUS_LABELS } from "./constants";
-import { TASK_STATUSES, PRIORITIES } from "./schema";
+import { TASK_STATUSES, PRIORITIES, SKILLS } from "./schema";
 import type { Doc, Id } from "./_generated/dataModel";
 
 const taskStatus = v.union(...TASK_STATUSES.map((s) => v.literal(s)));
 const priority = v.union(...PRIORITIES.map((p) => v.literal(p)));
+const skill = v.union(...SKILLS.map((s) => v.literal(s)));
 
 export const listForProject = query({
   args: { projectId: v.id("projects") },
@@ -162,6 +163,7 @@ export const create = mutation({
     startDate: v.optional(v.number()),
     deadline: v.optional(v.number()),
     estimateHours: v.optional(v.number()),
+    skill: v.optional(skill),
   },
   handler: async (ctx, args) => {
     const me = await requireUser(ctx);
@@ -203,6 +205,7 @@ export const create = mutation({
       startDate: args.startDate,
       deadline: args.deadline,
       estimateHours: args.estimateHours,
+      skill: args.skill,
       completedAt: args.status === "done" ? Date.now() : undefined,
       order,
       createdBy: me._id,
@@ -244,6 +247,7 @@ export const update = mutation({
     startDate: v.optional(v.union(v.number(), v.null())),
     deadline: v.optional(v.union(v.number(), v.null())),
     estimateHours: v.optional(v.union(v.number(), v.null())),
+    skill: v.optional(v.union(skill, v.null())),
   },
   handler: async (ctx, args) => {
     const me = await requireUser(ctx);
@@ -271,6 +275,9 @@ export const update = mutation({
     if (args.estimateHours !== undefined) {
       patch.estimateHours =
         args.estimateHours === null ? undefined : args.estimateHours;
+    }
+    if (args.skill !== undefined) {
+      patch.skill = args.skill === null ? undefined : args.skill;
     }
     const finalStart =
       args.startDate !== undefined

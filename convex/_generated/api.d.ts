@@ -11,6 +11,7 @@
 import type * as attachments from "../attachments.js";
 import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
+import type * as capacity from "../capacity.js";
 import type * as checklists from "../checklists.js";
 import type * as comments from "../comments.js";
 import type * as constants from "../constants.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   attachments: typeof attachments;
   auditLog: typeof auditLog;
   auth: typeof auth;
+  capacity: typeof capacity;
   checklists: typeof checklists;
   comments: typeof comments;
   constants: typeof constants;

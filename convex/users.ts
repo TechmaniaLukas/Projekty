@@ -4,10 +4,11 @@ import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { getCurrentUser, requireUser, requireRole } from "./lib/auth";
 import { logAction } from "./lib/audit";
-import { ROLES, DEPARTMENTS } from "./schema";
+import { ROLES, DEPARTMENTS, SKILLS } from "./schema";
 
 const role = v.union(...ROLES.map((r) => v.literal(r)));
 const department = v.union(...DEPARTMENTS.map((d) => v.literal(d)));
+const skill = v.union(...SKILLS.map((s) => v.literal(s)));
 
 export const me = query({
   args: {},
@@ -62,6 +63,8 @@ export const updateUser = mutation({
     department: v.optional(v.union(department, v.null())),
     isActive: v.optional(v.boolean()),
     name: v.optional(v.string()),
+    skills: v.optional(v.array(skill)),
+    weeklyCapacityHours: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -75,6 +78,17 @@ export const updateUser = mutation({
     }
     if (args.isActive !== undefined) patch.isActive = args.isActive;
     if (args.name !== undefined) patch.name = args.name;
+    if (args.skills !== undefined) patch.skills = args.skills;
+    if (args.weeklyCapacityHours !== undefined) {
+      if (
+        args.weeklyCapacityHours !== null &&
+        (args.weeklyCapacityHours < 0 || args.weeklyCapacityHours > 80)
+      ) {
+        throw new ConvexError("Kapacita musí být 0–80 h/týden");
+      }
+      patch.weeklyCapacityHours =
+        args.weeklyCapacityHours === null ? undefined : args.weeklyCapacityHours;
+    }
 
     await ctx.db.patch(args.userId, patch);
 

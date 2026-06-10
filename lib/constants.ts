@@ -1,5 +1,14 @@
 export type Role = "admin" | "director" | "pm" | "department_lead" | "member";
 export type Department = "it" | "facility" | "vyroba";
+export type Skill =
+  | "truhlar"
+  | "kovak"
+  | "elektro"
+  | "montaz"
+  | "konstrukce"
+  | "sw"
+  | "grafika"
+  | "av";
 export type ProjectDepartment = Department | "cross";
 export type ProjectStatus = "planning" | "active" | "on_hold" | "done" | "archived";
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "review" | "done";
@@ -26,6 +35,23 @@ export const DEPARTMENT_LABELS: Record<Department, string> = {
   facility: "Facility",
   vyroba: "Výroba",
 };
+
+export const SKILL_LABELS: Record<Skill, string> = {
+  truhlar: "Truhlárna",
+  kovak: "Kovovýroba",
+  elektro: "Elektro",
+  montaz: "Montáž",
+  konstrukce: "Konstrukce",
+  sw: "Vývoj SW",
+  grafika: "Grafika",
+  av: "AV technika",
+};
+
+export const SKILL_OPTIONS: { value: Skill; label: string }[] = (
+  Object.entries(SKILL_LABELS) as [Skill, string][]
+).map(([value, label]) => ({ value, label }));
+
+export const DEFAULT_WEEKLY_CAPACITY = 32;
 
 export const DEPARTMENT_OPTIONS: { value: Department; label: string }[] = [
   { value: "it", label: "IT" },

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users, Settings, Calendar, GanttChart, BarChart3, BookTemplate, History, Clock, X, Crown } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Settings, Calendar, GanttChart, BarChart3, BookTemplate, History, Clock, X, Crown, Gauge } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
   managerOnly?: boolean;
+  leadOnly?: boolean; // admin, pm, director i vedoucí oddělení
   directorOnly?: boolean; // viditelné pouze pro ředitele (a admina)
   hideForDirector?: boolean; // ředitel nemá v navigaci (např. šablony)
 }
@@ -25,6 +26,7 @@ const items: NavItem[] = [
   { href: "/vykazy", label: "Výkazy", icon: Clock },
   { href: "/kalendar", label: "Kalendář", icon: Calendar },
   { href: "/casova-osa", label: "Časová osa", icon: GanttChart },
+  { href: "/kapacity", label: "Kapacity", icon: Gauge, leadOnly: true },
   { href: "/statistiky", label: "Statistiky", icon: BarChart3, managerOnly: true },
   { href: "/tym", label: "Tým", icon: Users },
   { href: "/admin/uzivatele", label: "Uživatelé", icon: Settings, adminOnly: true },
@@ -42,12 +44,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const isAdmin = me?.role === "admin";
   const isDirector = me?.role === "director";
   const isManager = isAdmin || me?.role === "pm";
+  const isLead = isManager || isDirector || me?.role === "department_lead";
 
   const nav = (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
         if (item.adminOnly && !isAdmin) return null;
         if (item.managerOnly && !isManager && !isDirector) return null;
+        if (item.leadOnly && !isLead) return null;
         if (item.directorOnly && !isDirector && !isAdmin) return null;
         if (item.hideForDirector && isDirector) return null;
         const active =

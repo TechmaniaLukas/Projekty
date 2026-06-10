@@ -16,8 +16,10 @@ import {
   DEPARTMENT_OPTIONS,
   DEPARTMENT_LABELS,
   ROLE_LABELS,
+  SKILL_OPTIONS,
   type Role,
   type Department,
+  type Skill,
 } from "@/lib/constants";
 
 export default function UsersAdminPage() {
@@ -161,6 +163,8 @@ export default function UsersAdminPage() {
                   <th className="px-3 py-2">Uživatel</th>
                   <th className="px-3 py-2">Role</th>
                   <th className="px-3 py-2">Oddělení</th>
+                  <th className="px-3 py-2">Disciplíny</th>
+                  <th className="px-3 py-2">Kap. h/t</th>
                   <th className="px-3 py-2">Aktivní</th>
                 </tr>
               </thead>
@@ -293,17 +297,41 @@ function UserRow({
   onUpdate,
 }: {
   user: Doc<"users">;
-  onUpdate: (patch: { role?: Role; department?: Department | null; isActive?: boolean; name?: string }) => Promise<unknown>;
+  onUpdate: (patch: {
+    role?: Role;
+    department?: Department | null;
+    isActive?: boolean;
+    name?: string;
+    skills?: Skill[];
+    weeklyCapacityHours?: number | null;
+  }) => Promise<unknown>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [capacity, setCapacity] = useState(
+    user.weeklyCapacityHours !== undefined ? String(user.weeklyCapacityHours) : "",
+  );
 
-  async function patch(p: { role?: Role; department?: Department | null; isActive?: boolean }) {
+  async function patch(p: {
+    role?: Role;
+    department?: Department | null;
+    isActive?: boolean;
+    skills?: Skill[];
+    weeklyCapacityHours?: number | null;
+  }) {
     setBusy(true);
     try {
       await onUpdate(p);
     } finally {
       setBusy(false);
     }
+  }
+
+  function toggleSkill(s: Skill) {
+    const current = (user.skills ?? []) as Skill[];
+    const next = current.includes(s)
+      ? current.filter((x) => x !== s)
+      : [...current, s];
+    patch({ skills: next });
   }
 
   return (
@@ -354,6 +382,48 @@ function UserRow({
             </option>
           ))}
         </Select>
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex max-w-[260px] flex-wrap gap-1">
+          {SKILL_OPTIONS.map((o) => {
+            const active = ((user.skills ?? []) as Skill[]).includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                disabled={busy}
+                onClick={() => toggleSkill(o.value)}
+                className={
+                  "rounded-full border px-2 py-0.5 text-[11px] transition-colors " +
+                  (active
+                    ? "border-blue-500 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200"
+                    : "border-slate-300 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800")
+                }
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      </td>
+      <td className="px-3 py-3">
+        <Input
+          type="number"
+          min="0"
+          max="80"
+          value={capacity}
+          placeholder="32"
+          onChange={(e) => setCapacity(e.target.value)}
+          onBlur={() => {
+            const num = capacity.trim() === "" ? null : Number(capacity);
+            if (num !== null && (Number.isNaN(num) || num < 0 || num > 80)) return;
+            if (num === (user.weeklyCapacityHours ?? null)) return;
+            patch({ weeklyCapacityHours: num });
+          }}
+          disabled={busy}
+          className="w-20"
+          title="Týdenní kapacita v hodinách (prázdné = výchozích 32 h)"
+        />
       </td>
       <td className="px-3 py-3">
         <label className="inline-flex items-center gap-2">

@@ -4,6 +4,16 @@ import { authTables } from "@convex-dev/auth/server";
 
 export const ROLES = ["admin", "director", "pm", "department_lead", "member"] as const;
 export const DEPARTMENTS = ["it", "facility", "vyroba"] as const;
+export const SKILLS = [
+  "truhlar",
+  "kovak",
+  "elektro",
+  "montaz",
+  "konstrukce",
+  "sw",
+  "grafika",
+  "av",
+] as const;
 export const PROJECT_DEPARTMENTS = ["it", "facility", "vyroba", "cross"] as const;
 export const PROJECT_STATUSES = ["planning", "active", "on_hold", "done", "archived"] as const;
 export const TASK_STATUSES = ["todo", "in_progress", "blocked", "review", "done"] as const;
@@ -11,6 +21,7 @@ export const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 const role = v.union(...ROLES.map((r) => v.literal(r)));
 const department = v.union(...DEPARTMENTS.map((d) => v.literal(d)));
+const skill = v.union(...SKILLS.map((s) => v.literal(s)));
 const projectDepartment = v.union(...PROJECT_DEPARTMENTS.map((d) => v.literal(d)));
 const projectStatus = v.union(...PROJECT_STATUSES.map((s) => v.literal(s)));
 const taskStatus = v.union(...TASK_STATUSES.map((s) => v.literal(s)));
@@ -35,6 +46,9 @@ export default defineSchema({
     notifyEmail: v.optional(
       v.union(v.literal("instant"), v.literal("daily"), v.literal("off")),
     ),
+    // Kapacitní plánování
+    skills: v.optional(v.array(skill)),
+    weeklyCapacityHours: v.optional(v.number()), // default 32 (reálná produktivita)
   })
     .index("email", ["email"])
     .index("phone", ["phone"])
@@ -84,6 +98,7 @@ export default defineSchema({
     deadline: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     estimateHours: v.optional(v.number()),
+    skill: v.optional(skill),
     order: v.number(),
     createdBy: v.id("users"),
   })
