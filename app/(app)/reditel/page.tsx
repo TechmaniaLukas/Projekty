@@ -24,7 +24,7 @@ import {
 } from "@/lib/constants";
 import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
 import { PendingApprovals } from "@/components/milestones/PendingApprovals";
-import { cn } from "@/lib/utils";
+import { cn, pluralize } from "@/lib/utils";
 
 const MS_STATUS_LABEL: Record<string, string> = {
   planned: "Plánováno",
@@ -124,7 +124,7 @@ export default function ReditelPage() {
                     {PROJECT_DEPARTMENT_LABELS[d.department as ProjectDepartment]}
                   </Badge>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {d.total} projektů
+                    {pluralize(d.total, "projekt", "projekty", "projektů")}
                   </span>
                 </div>
               </CardHeader>

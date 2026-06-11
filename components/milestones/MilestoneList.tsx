@@ -105,13 +105,13 @@ export function MilestoneList({ projectId, canManage }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="min-w-0 flex-1 basis-64 text-sm text-slate-500 dark:text-slate-400">
           Milníky jsou klíčové dodávky projektu. Po dokončení je submituješ ke schválení;
           přiřazený schvalovatel je buď schválí, nebo vrátí k přepracování s důvodem.
         </p>
         {canManage && (
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button size="sm" className="shrink-0" onClick={() => setCreating(true)}>
             <Plus className="h-3.5 w-3.5" />
             Přidat milník
           </Button>

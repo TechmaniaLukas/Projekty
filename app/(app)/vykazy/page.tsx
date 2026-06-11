@@ -192,6 +192,8 @@ export default function VykazyPage() {
           submission?.status !== "approved" && (
             <Button
               size="sm"
+              disabled={totalHours <= 0}
+              title={totalHours <= 0 ? "Nejdřív zaloguj hodiny" : undefined}
               onClick={async () => {
                 try {
                   await submitWeek({

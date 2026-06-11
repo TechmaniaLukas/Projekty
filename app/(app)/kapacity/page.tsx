@@ -13,7 +13,7 @@ import {
   type Skill,
   type Department,
 } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn, pluralize } from "@/lib/utils";
 
 function startOfWeek(d: Date): Date {
   const r = new Date(d);
@@ -97,7 +97,10 @@ export default function KapacityPage() {
             s.skill === "ostatni"
               ? "Nezařazeno"
               : SKILL_LABELS[s.skill as Skill],
-          sub: s.skill === "ostatni" ? "bez disciplíny" : `${s.people} lidí`,
+          sub:
+            s.skill === "ostatni"
+              ? "bez disciplíny"
+              : pluralize(s.people, "člověk", "lidé", "lidí"),
           capacity: s.capacity,
           cells: s.cells,
           later: s.later,

@@ -11,6 +11,7 @@ import {
   type Department,
 } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
+import { pluralize } from "@/lib/utils";
 
 export function DepartmentSummary() {
   const projects = useQuery(api.projects.list, {});
@@ -74,7 +75,9 @@ export function DepartmentSummary() {
             >
               <div className="mb-2 flex items-center justify-between">
                 <Badge tone={s.tone}>{s.label}</Badge>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{s.total} projektů</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {pluralize(s.total, "projekt", "projekty", "projektů")}
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-1.5 text-xs">
                 <div>
