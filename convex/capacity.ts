@@ -246,3 +246,93 @@ export const overview = query({
     };
   },
 });
+
+/**
+ * Vytížení jednoho člověka v týdnu daného termínu — pro varování ve formuláři
+ * úkolu („tento řešitel bude v týdnu termínu přetížený").
+ *
+ * Vrací demand (zbývající kalibrované odhady jeho úkolů s termínem v tom
+ * týdnu, bez excludeTaskId), capacity a kalibrační faktor — prospektivní
+ * zátěž s aktuálně editovaným úkolem si dopočítá klient.
+ */
+export const assigneeWeekLoad = query({
+  args: {
+    userId: v.id("users"),
+    weekStart: v.number(),
+    excludeTaskId: v.optional(v.id("tasks")),
+  },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.isActive === false) return null;
+    const weekEnd = args.weekStart + WEEK_MS;
+    const capacity = user.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS;
+    const now = Date.now();
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_assignee", (q) => q.eq("assigneeId", args.userId))
+      .collect();
+
+    // Kalibrace jen pro tohoto člověka
+    let est = 0;
+    let act = 0;
+    let n = 0;
+    for (const t of tasks) {
+      if (
+        t.status !== "done" ||
+        t.completedAt === undefined ||
+        t.completedAt < now - CALIBRATION_WINDOW_MS ||
+        !t.estimateHours ||
+        t.estimateHours <= 0
+      )
+        continue;
+      const entries = await ctx.db
+        .query("timeEntries")
+        .withIndex("by_task", (q) => q.eq("taskId", t._id))
+        .collect();
+      const a = entries.reduce((s, e) => s + e.hours, 0);
+      if (a <= 0) continue;
+      est += t.estimateHours;
+      act += a;
+      n += 1;
+    }
+    const calibration =
+      n >= 3 && est >= 10
+        ? Math.round(Math.min(2, Math.max(0.5, act / est)) * 100) / 100
+        : 1;
+
+    let demand = 0;
+    let taskCount = 0;
+    const projectCache = new Map<string, Doc<"projects"> | null>();
+    for (const t of tasks) {
+      if (t.status === "done") continue;
+      if (args.excludeTaskId && t._id === args.excludeTaskId) continue;
+      if (!t.estimateHours || t.estimateHours <= 0) continue;
+      if (!t.deadline || t.deadline < args.weekStart || t.deadline >= weekEnd)
+        continue;
+      let p = projectCache.get(t.projectId as string);
+      if (p === undefined) {
+        p = await ctx.db.get(t.projectId);
+        projectCache.set(t.projectId as string, p);
+      }
+      if (!p || p.isTemplate === true || p.status === "archived") continue;
+      const entries = await ctx.db
+        .query("timeEntries")
+        .withIndex("by_task", (q) => q.eq("taskId", t._id))
+        .collect();
+      const logged = entries.reduce((s, e) => s + e.hours, 0);
+      const remaining = Math.max(0, t.estimateHours * calibration - logged);
+      if (remaining > 0) {
+        demand += remaining;
+        taskCount += 1;
+      }
+    }
+    return {
+      demand: Math.round(demand * 10) / 10,
+      capacity,
+      calibration,
+      taskCount,
+    };
+  },
+});

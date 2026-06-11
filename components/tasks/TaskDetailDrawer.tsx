@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -303,6 +303,14 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
             </Select>
           </div>
         </div>
+        {task && assigneeId && deadline && (
+          <CapacityWarning
+            taskId={task._id}
+            assigneeId={assigneeId as Id<"users">}
+            deadlineStr={deadline}
+            estimateStr={estimateHours}
+          />
+        )}
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
             {error}
@@ -368,6 +376,76 @@ export function TaskDetailDrawer({ taskId, project, onClose }: Props) {
         </div>
       </div>
     </Drawer>
+  );
+}
+
+function CapacityWarning({
+  taskId,
+  assigneeId,
+  deadlineStr,
+  estimateStr,
+}: {
+  taskId: Id<"tasks">;
+  assigneeId: Id<"users">;
+  deadlineStr: string;
+  estimateStr: string;
+}) {
+  const weekStart = useMemo(() => {
+    const ms = fromDateInputValue(deadlineStr);
+    if (ms === undefined) return null;
+    const d = new Date(ms);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay() || 7;
+    if (day !== 1) d.setDate(d.getDate() - (day - 1));
+    return d.getTime();
+  }, [deadlineStr]);
+
+  const data = useQuery(
+    api.capacity.assigneeWeekLoad,
+    weekStart !== null
+      ? { userId: assigneeId, weekStart, excludeTaskId: taskId }
+      : "skip",
+  );
+
+  if (!data || weekStart === null) return null;
+
+  const estimateNum = Math.max(
+    0,
+    Number(estimateStr.replace(",", ".")) || 0,
+  );
+  const prospective =
+    Math.round((data.demand + estimateNum * data.calibration) * 10) / 10;
+  const load =
+    data.capacity > 0 ? Math.round((prospective / data.capacity) * 100) : null;
+
+  if (load === null || load < 70) return null;
+
+  const critical = load > 130;
+  const over = load > 95;
+  return (
+    <div
+      className={
+        "rounded-md border p-3 text-sm " +
+        (over
+          ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+          : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300")
+      }
+    >
+      {critical ? "🔴" : over ? "⚠️" : "ℹ️"} Řešitel bude v týdnu termínu na{" "}
+      <strong>{load}%</strong> kapacity ({prospective.toString().replace(".", ",")}
+      {" / "}
+      {data.capacity.toString().replace(".", ",")} h
+      {data.taskCount > 0 ? `, dalších ${data.taskCount} úkolů` : ""}
+      {data.calibration !== 1
+        ? `, kalibrace ×${data.calibration.toString().replace(".", ",")}`
+        : ""}
+      ).{" "}
+      {critical
+        ? "Termín se velmi pravděpodobně nestihne — posuň termín nebo přiřaď jiného řešitele."
+        : over
+          ? "Zvaž posun termínu nebo jiného řešitele."
+          : ""}
+    </div>
   );
 }
 
