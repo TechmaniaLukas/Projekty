@@ -621,6 +621,15 @@ export const seedExhibitTemplate = mutation({
         priority?: "low" | "medium" | "high" | "critical";
         description?: string;
         estimateHours?: number;
+        skill?:
+          | "truhlar"
+          | "kovak"
+          | "elektro"
+          | "montaz"
+          | "konstrukce"
+          | "sw"
+          | "grafika"
+          | "av";
       },
     ): Promise<Id<"tasks">> => {
       const all = await ctx.db
@@ -631,7 +640,7 @@ export const seedExhibitTemplate = mutation({
         (t) => t.title === title && t.parentTaskId === args.parentTaskId,
       );
       if (existing) {
-        // Doplň odhad/popis, kdyby chybělo
+        // Doplň odhad/popis/skill, kdyby chybělo
         const patch: Record<string, unknown> = {};
         if (
           args.estimateHours !== undefined &&
@@ -640,6 +649,7 @@ export const seedExhibitTemplate = mutation({
           patch.estimateHours = args.estimateHours;
         if (args.description && !existing.description)
           patch.description = args.description;
+        if (args.skill && !existing.skill) patch.skill = args.skill;
         if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
         return existing._id;
       }
@@ -652,6 +662,7 @@ export const seedExhibitTemplate = mutation({
         priority: args.priority ?? "medium",
         order: args.order,
         estimateHours: args.estimateHours,
+        skill: args.skill,
         createdBy: admin._id,
       });
     };
@@ -686,6 +697,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f1,
       order: 0,
       estimateHours: 8,
+      skill: "konstrukce",
     });
     await ensureChecklist(brief, [
       "Definovaný cílový věk návštěvníků",
@@ -697,11 +709,13 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f1,
       order: 1,
       estimateHours: 16,
+      skill: "konstrukce",
     });
     const norm = await ensureTask("Bezpečnostní a normové posouzení", {
       parentTaskId: f1,
       order: 2,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureChecklist(norm, [
       "ČSN EN 71 (bezpečnost hraček) — relevantní body",
@@ -724,11 +738,13 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f2,
       order: 0,
       estimateHours: 40,
+      skill: "konstrukce",
     });
     const bom = await ensureTask("Specifikace materiálu a komponent (BOM)", {
       parentTaskId: f2,
       order: 1,
       estimateHours: 8,
+      skill: "konstrukce",
     });
     await ensureChecklist(bom, [
       "Hlavní materiály a rozměry",
@@ -740,12 +756,14 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f2,
       order: 2,
       estimateHours: 16,
+      skill: "elektro",
       description: "Pouze pokud exponát obsahuje elektronické / silnoproudé části.",
     });
     await ensureTask("Vlastní výroba vs. subdodávka — rozhodnutí", {
       parentTaskId: f2,
       order: 3,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureTask("Schválení konstrukce (M2)", {
       parentTaskId: f2,
@@ -761,6 +779,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f3,
       order: 0,
       estimateHours: 8,
+      skill: "konstrukce",
       description:
         "Min. 3 nabídky, srovnání kvalita/cena/termín. Dodavatele přidej do záložky Kontakty.",
     });
@@ -768,11 +787,13 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f3,
       order: 1,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureTask("Objednávka materiálu", {
       parentTaskId: f3,
       order: 2,
       estimateHours: 2,
+      skill: "konstrukce",
     });
     await ensureTask("Sledování dodacích termínů", {
       parentTaskId: f3,
@@ -786,22 +807,26 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f4,
       order: 0,
       estimateHours: 40,
+      skill: "truhlar",
     });
     await ensureTask("Výroba elektroniky / zapojení", {
       parentTaskId: f4,
       order: 1,
       estimateHours: 24,
+      skill: "elektro",
     });
     await ensureTask("Vývoj SW / interakce", {
       parentTaskId: f4,
       order: 2,
       estimateHours: 40,
+      skill: "sw",
       description: "Pouze u digitálních exponátů. Řešitel: IT oddělení.",
     });
     await ensureTask("Kompletace prototypu", {
       parentTaskId: f4,
       order: 3,
       estimateHours: 16,
+      skill: "montaz",
     });
 
     // Fáze 5 — Testování
@@ -810,6 +835,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f5,
       order: 0,
       estimateHours: 8,
+      skill: "montaz",
     });
     await ensureChecklist(funcTest, [
       "Všechny scénáře interakce projdou",
@@ -822,6 +848,7 @@ export const seedExhibitTemplate = mutation({
       order: 1,
       priority: "critical",
       estimateHours: 4,
+      skill: "elektro",
       description: "Externí revizní technik — přidej kontakt do záložky Kontakty.",
     });
     await ensureChecklist(safetyTest, [
@@ -831,7 +858,7 @@ export const seedExhibitTemplate = mutation({
     ]);
     const userTest = await ensureTask(
       "Uživatelský test s návštěvníky",
-      { parentTaskId: f5, order: 2, estimateHours: 16 },
+      { parentTaskId: f5, order: 2, estimateHours: 16, skill: "konstrukce" },
     );
     await ensureChecklist(userTest, [
       "Min. 10 dětí ve 3 věkových skupinách",
@@ -843,6 +870,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f5,
       order: 3,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureTask("Prototyp prošel testy (M3)", {
       parentTaskId: f5,
@@ -858,16 +886,19 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f6,
       order: 0,
       estimateHours: 16,
+      skill: "truhlar",
     });
     await ensureTask("Finální výroba sériových dílů", {
       parentTaskId: f6,
       order: 1,
       estimateHours: 60,
+      skill: "truhlar",
     });
     await ensureTask("Povrchové úpravy a finalizace", {
       parentTaskId: f6,
       order: 2,
       estimateHours: 16,
+      skill: "truhlar",
     });
     await ensureTask("Finální výroba dokončena (M4)", {
       parentTaskId: f6,
@@ -881,6 +912,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f7,
       order: 0,
       estimateHours: 8,
+      skill: "grafika",
     });
     await ensureChecklist(texts, [
       "Vhodný věk a srozumitelnost (ověřeno popularizátorem)",
@@ -891,16 +923,19 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f7,
       order: 1,
       estimateHours: 12,
+      skill: "grafika",
     });
     await ensureTask("Tisk a aplikace popisků", {
       parentTaskId: f7,
       order: 2,
       estimateHours: 4,
+      skill: "grafika",
     });
     await ensureTask("Multimédia (video/audio)", {
       parentTaskId: f7,
       order: 3,
       estimateHours: 16,
+      skill: "av",
       description: "Pouze pokud relevantní.",
     });
 
@@ -913,23 +948,27 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f8,
       order: 0,
       estimateHours: 8,
+      skill: "montaz",
       description: "Facility.",
     });
     await ensureTask("Elektrická / síťová příprava", {
       parentTaskId: f8,
       order: 1,
       estimateHours: 4,
+      skill: "elektro",
       description: "IT + Facility.",
     });
     await ensureTask("Instalace exponátu na místě", {
       parentTaskId: f8,
       order: 2,
       estimateHours: 16,
+      skill: "montaz",
     });
     await ensureTask("Finální seřízení a kalibrace", {
       parentTaskId: f8,
       order: 3,
       estimateHours: 4,
+      skill: "montaz",
     });
     await ensureTask("Instalace dokončena (M5)", {
       parentTaskId: f8,
@@ -944,16 +983,19 @@ export const seedExhibitTemplate = mutation({
       order: 0,
       priority: "critical",
       estimateHours: 4,
+      skill: "elektro",
     });
     await ensureTask("Soft-opening (interní pilot)", {
       parentTaskId: f9,
       order: 1,
       estimateHours: 8,
+      skill: "montaz",
     });
     const training = await ensureTask("Školení průvodců", {
       parentTaskId: f9,
       order: 2,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureChecklist(training, [
       "Použití a interakce s exponátem",
@@ -965,6 +1007,7 @@ export const seedExhibitTemplate = mutation({
       parentTaskId: f9,
       order: 3,
       estimateHours: 4,
+      skill: "konstrukce",
     });
     await ensureTask("Akceptace a předání do provozu (M6)", {
       parentTaskId: f9,

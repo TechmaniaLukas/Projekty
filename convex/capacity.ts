@@ -1,9 +1,15 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import { requireUser } from "./lib/auth";
-import { isAdmin, isPm, isDeptLead, isDirector } from "./lib/permissions";
+import {
+  isAdmin,
+  isPm,
+  isDeptLead,
+  isDirector,
+  canViewProject,
+} from "./lib/permissions";
 import { SKILLS } from "./schema";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 const DEFAULT_CAPACITY_HOURS = 32;
 const WEEK_MS = 7 * 24 * 3600 * 1000;
@@ -334,5 +340,402 @@ export const assigneeWeekLoad = query({
       calibration,
       taskCount,
     };
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* Forecast engine (F3/F4): volná kapacita per skill per týden +       */
+/* greedy rozvrh hodin do volných slotů                                */
+/* ------------------------------------------------------------------ */
+
+const FORECAST_HORIZON_WEEKS = 26;
+
+interface FreeCapacityModel {
+  capacityBySkill: Map<string, number>;
+  /** volné hodiny per skill per týden (kapacita − existující poptávka) */
+  freeBySkill: Map<string, number[]>;
+  calibration: Map<string, number>;
+  weekStart: number;
+  numWeeks: number;
+}
+
+/**
+ * Spočítá volnou kapacitu per skill per týden z existujících otevřených
+ * úkolů (kalibrované zbývající odhady, šablony/archivované vyloučeny).
+ * `excludeTaskIds` se z existující poptávky vynechají (budou rozvrženy zvlášť).
+ */
+async function buildFreeCapacityModel(
+  ctx: QueryCtx,
+  weekStart: number,
+  numWeeks: number,
+  excludeTaskIds: Set<string>,
+): Promise<FreeCapacityModel> {
+  const now = Date.now();
+  const horizonEnd = weekStart + numWeeks * WEEK_MS;
+
+  const [users, allProjects, allTasks] = await Promise.all([
+    ctx.db.query("users").collect(),
+    ctx.db.query("projects").collect(),
+    ctx.db.query("tasks").collect(),
+  ]);
+
+  const activeUsers = users.filter((u) => u.isActive !== false && u.role);
+  const userById = new Map(activeUsers.map((u) => [u._id as string, u]));
+  const realProjects = new Set(
+    allProjects
+      .filter((p) => p.isTemplate !== true && p.status !== "archived")
+      .map((p) => p._id as string),
+  );
+
+  // Kalibrace per assignee
+  const calAgg = new Map<string, { est: number; act: number; n: number }>();
+  for (const t of allTasks) {
+    if (
+      t.status !== "done" ||
+      t.completedAt === undefined ||
+      t.completedAt < now - CALIBRATION_WINDOW_MS ||
+      !t.estimateHours ||
+      t.estimateHours <= 0 ||
+      !t.assigneeId
+    )
+      continue;
+    const entries = await ctx.db
+      .query("timeEntries")
+      .withIndex("by_task", (q) => q.eq("taskId", t._id))
+      .collect();
+    const actual = entries.reduce((s, e) => s + e.hours, 0);
+    if (actual <= 0) continue;
+    const key = t.assigneeId as string;
+    const agg = calAgg.get(key) ?? { est: 0, act: 0, n: 0 };
+    agg.est += t.estimateHours;
+    agg.act += actual;
+    agg.n += 1;
+    calAgg.set(key, agg);
+  }
+  const calibration = new Map<string, number>();
+  for (const [uid, agg] of calAgg) {
+    if (agg.n >= 3 && agg.est >= 10) {
+      calibration.set(
+        uid,
+        Math.round(Math.min(2, Math.max(0.5, agg.act / agg.est)) * 100) / 100,
+      );
+    }
+  }
+
+  // Kapacita per skill
+  const capacityBySkill = new Map<string, number>();
+  for (const s of SKILLS) {
+    capacityBySkill.set(
+      s,
+      activeUsers
+        .filter((u) => (u.skills ?? []).includes(s))
+        .reduce((sum, u) => sum + (u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS), 0),
+    );
+  }
+
+  // Existující poptávka per skill per týden
+  const demandBySkill = new Map<string, number[]>();
+  for (const s of SKILLS) demandBySkill.set(s, Array(numWeeks).fill(0));
+
+  for (const t of allTasks) {
+    if (t.status === "done") continue;
+    if (excludeTaskIds.has(t._id as string)) continue;
+    if (!realProjects.has(t.projectId as string)) continue;
+    if (!t.estimateHours || t.estimateHours <= 0) continue;
+    if (!t.deadline) continue;
+
+    const clamped = Math.max(t.deadline, weekStart);
+    if (clamped >= horizonEnd) continue;
+    const weekIdx = Math.floor((clamped - weekStart) / WEEK_MS);
+
+    const assignee = t.assigneeId ? userById.get(t.assigneeId as string) : undefined;
+    const skill =
+      (t.skill as string | undefined) ??
+      (assignee?.skills?.[0] as string | undefined);
+    if (!skill || !demandBySkill.has(skill)) continue;
+
+    const entries = await ctx.db
+      .query("timeEntries")
+      .withIndex("by_task", (q) => q.eq("taskId", t._id))
+      .collect();
+    const logged = entries.reduce((s, e) => s + e.hours, 0);
+    const factor = t.assigneeId
+      ? (calibration.get(t.assigneeId as string) ?? 1)
+      : 1;
+    const remaining = Math.max(0, t.estimateHours * factor - logged);
+    if (remaining <= 0) continue;
+    demandBySkill.get(skill)![weekIdx] += remaining;
+  }
+
+  const freeBySkill = new Map<string, number[]>();
+  for (const s of SKILLS) {
+    const cap = capacityBySkill.get(s) ?? 0;
+    freeBySkill.set(
+      s,
+      demandBySkill.get(s)!.map((d) => Math.max(0, cap - d)),
+    );
+  }
+
+  return { capacityBySkill, freeBySkill, calibration, weekStart, numWeeks };
+}
+
+/**
+ * Greedy rozvrh: kolik týdnů potřebuje `hours` hodin daného skillu, počínaje
+ * `startIdx`, do volných slotů. Za horizontem předpokládá plnou kapacitu.
+ * Vrací index týdne dokončení, nebo null pokud skill nemá žádnou kapacitu.
+ */
+function scheduleSkillHours(
+  hours: number,
+  free: number[],
+  capacityPerWeek: number,
+  startIdx: number,
+): number | null {
+  if (hours <= 0) return startIdx;
+  if (capacityPerWeek <= 0) return null;
+  let h = hours;
+  for (let w = startIdx; w < free.length; w++) {
+    h -= free[w];
+    if (h <= 0) return w;
+  }
+  return free.length - 1 + Math.ceil(h / capacityPerWeek);
+}
+
+/**
+ * F4 — realistický termín milníku: zbývající hodiny navázaných úkolů
+ * rozvržené do volné kapacity per skill. Porovnání s plánovaným dueDate.
+ */
+export const milestoneForecast = query({
+  args: { milestoneId: v.id("milestones"), weekStart: v.number() },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const milestone = await ctx.db.get(args.milestoneId);
+    if (!milestone) return null;
+    const project = await ctx.db.get(milestone.projectId);
+    if (!project) return null;
+    if (!(await canViewProject(ctx, me, project))) return null;
+    if (milestone.status === "approved") return null;
+
+    const linked = await ctx.db
+      .query("tasks")
+      .withIndex("by_milestone", (q) => q.eq("milestoneId", args.milestoneId))
+      .collect();
+    const openLinked = linked.filter((t) => t.status !== "done");
+    if (openLinked.length === 0) return null;
+
+    const withEstimate = openLinked.filter(
+      (t) => t.estimateHours && t.estimateHours > 0,
+    );
+    const missingEstimates = openLinked.length - withEstimate.length;
+    if (withEstimate.length === 0) {
+      return {
+        forecastDate: null,
+        dueDate: milestone.dueDate,
+        atRisk: false,
+        missingEstimates,
+        blockedSkills: [] as string[],
+        totalRemaining: 0,
+      };
+    }
+
+    const excludeIds = new Set(withEstimate.map((t) => t._id as string));
+    const model = await buildFreeCapacityModel(
+      ctx,
+      args.weekStart,
+      FORECAST_HORIZON_WEEKS,
+      excludeIds,
+    );
+
+    // Zbývající hodiny per skill (kalibrované, minus zalogováno)
+    const users = await ctx.db.query("users").collect();
+    const userById = new Map(users.map((u) => [u._id as string, u]));
+    const neededBySkill = new Map<string, number>();
+    let totalRemaining = 0;
+    for (const t of withEstimate) {
+      const entries = await ctx.db
+        .query("timeEntries")
+        .withIndex("by_task", (q) => q.eq("taskId", t._id))
+        .collect();
+      const logged = entries.reduce((s, e) => s + e.hours, 0);
+      const factor = t.assigneeId
+        ? (model.calibration.get(t.assigneeId as string) ?? 1)
+        : 1;
+      const remaining = Math.max(0, (t.estimateHours ?? 0) * factor - logged);
+      if (remaining <= 0) continue;
+      totalRemaining += remaining;
+      const assignee = t.assigneeId
+        ? userById.get(t.assigneeId as string)
+        : undefined;
+      const skill =
+        (t.skill as string | undefined) ??
+        (assignee?.skills?.[0] as string | undefined) ??
+        "__none__";
+      neededBySkill.set(skill, (neededBySkill.get(skill) ?? 0) + remaining);
+    }
+    if (totalRemaining <= 0) return null;
+
+    let maxFinishIdx = 0;
+    const blockedSkills: string[] = [];
+    for (const [skill, hours] of neededBySkill) {
+      if (skill === "__none__") {
+        // bez disciplíny nedokážeme rozvrhnout — započti optimisticky 1 týden
+        maxFinishIdx = Math.max(maxFinishIdx, 0);
+        continue;
+      }
+      const finish = scheduleSkillHours(
+        hours,
+        model.freeBySkill.get(skill) ?? [],
+        model.capacityBySkill.get(skill) ?? 0,
+        0,
+      );
+      if (finish === null) {
+        blockedSkills.push(skill);
+      } else {
+        maxFinishIdx = Math.max(maxFinishIdx, finish);
+      }
+    }
+
+    const forecastDate =
+      blockedSkills.length > 0
+        ? null
+        : args.weekStart + (maxFinishIdx + 1) * WEEK_MS - 1;
+
+    return {
+      forecastDate,
+      dueDate: milestone.dueDate,
+      atRisk: forecastDate !== null && forecastDate > milestone.dueDate,
+      missingEstimates,
+      blockedSkills,
+      totalRemaining: Math.round(totalRemaining * 10) / 10,
+    };
+  },
+});
+
+/**
+ * F3 — projekce dokončení projektu ze šablony: hodiny šablonových úkolů
+ * per skill rozvržené do volné kapacity od zvoleného začátku.
+ */
+export const templateForecast = query({
+  args: {
+    templateId: v.id("projects"),
+    weekStart: v.number(),
+    startDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const tpl = await ctx.db.get(args.templateId);
+    if (!tpl || tpl.isTemplate !== true) return null;
+    if (!(await canViewProject(ctx, me, tpl))) return null;
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.templateId))
+      .collect();
+    const withEstimate = tasks.filter(
+      (t) => t.estimateHours && t.estimateHours > 0,
+    );
+    if (withEstimate.length === 0) {
+      return { forecastDate: null, totalHours: 0, perSkill: [], blockedSkills: [], unskilledHours: 0, startWeekIdx: 0 };
+    }
+
+    const model = await buildFreeCapacityModel(
+      ctx,
+      args.weekStart,
+      FORECAST_HORIZON_WEEKS,
+      new Set(),
+    );
+
+    const startIdx = Math.max(
+      0,
+      args.startDate
+        ? Math.floor((args.startDate - args.weekStart) / WEEK_MS)
+        : 0,
+    );
+
+    const neededBySkill = new Map<string, number>();
+    let unskilledHours = 0;
+    let totalHours = 0;
+    for (const t of withEstimate) {
+      totalHours += t.estimateHours!;
+      const skill = t.skill as string | undefined;
+      if (!skill) {
+        unskilledHours += t.estimateHours!;
+        continue;
+      }
+      neededBySkill.set(
+        skill,
+        (neededBySkill.get(skill) ?? 0) + t.estimateHours!,
+      );
+    }
+
+    let maxFinishIdx = startIdx;
+    const blockedSkills: string[] = [];
+    const perSkill: {
+      skill: string;
+      hours: number;
+      finishWeekIdx: number | null;
+    }[] = [];
+    for (const [skill, hours] of neededBySkill) {
+      const finish = scheduleSkillHours(
+        hours,
+        model.freeBySkill.get(skill) ?? [],
+        model.capacityBySkill.get(skill) ?? 0,
+        startIdx,
+      );
+      perSkill.push({ skill, hours: Math.round(hours * 10) / 10, finishWeekIdx: finish });
+      if (finish === null) blockedSkills.push(skill);
+      else maxFinishIdx = Math.max(maxFinishIdx, finish);
+    }
+    perSkill.sort(
+      (a, b) => (b.finishWeekIdx ?? 999) - (a.finishWeekIdx ?? 999),
+    );
+
+    const forecastDate =
+      blockedSkills.length > 0
+        ? null
+        : args.weekStart + (maxFinishIdx + 1) * WEEK_MS - 1;
+
+    return {
+      forecastDate,
+      totalHours: Math.round(totalHours * 10) / 10,
+      unskilledHours: Math.round(unskilledHours * 10) / 10,
+      perSkill,
+      blockedSkills,
+      startWeekIdx: startIdx,
+    };
+  },
+});
+
+/**
+ * F4 — souhrn přetížených disciplín v příštích N týdnech (kontext pro
+ * schvalovatele milníků a dashboard).
+ */
+export const bottleneckSummary = query({
+  args: { weekStart: v.number(), weeks: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    if (!isAdmin(me) && !isPm(me) && !isDeptLead(me) && !isDirector(me)) {
+      return null;
+    }
+    const numWeeks = Math.min(Math.max(args.weeks ?? 4, 1), 12);
+    const model = await buildFreeCapacityModel(
+      ctx,
+      args.weekStart,
+      numWeeks,
+      new Set(),
+    );
+    const out: { skill: string; maxLoad: number }[] = [];
+    for (const s of SKILLS) {
+      const cap = model.capacityBySkill.get(s) ?? 0;
+      if (cap <= 0) continue;
+      const free = model.freeBySkill.get(s)!;
+      let maxLoad = 0;
+      for (let w = 0; w < numWeeks; w++) {
+        const demand = cap - free[w];
+        maxLoad = Math.max(maxLoad, Math.round((demand / cap) * 100));
+      }
+      if (maxLoad > 95) out.push({ skill: s, maxLoad });
+    }
+    out.sort((a, b) => b.maxLoad - a.maxLoad);
+    return out;
   },
 });

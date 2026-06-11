@@ -1,16 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { Crown } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate, isOverdue, isDeadlineSoon } from "@/lib/dates";
+import { SKILL_LABELS, type Skill } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function PendingApprovals() {
   const items = useQuery(api.milestones.myPendingApprovals, {});
+
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay() || 7;
+    if (day !== 1) d.setDate(d.getDate() - (day - 1));
+    return d.getTime();
+  }, []);
+  const bottlenecks = useQuery(
+    api.capacity.bottleneckSummary,
+    items && items.length > 0 ? { weekStart, weeks: 4 } : "skip",
+  );
 
   if (items === undefined) return null;
   if (items.length === 0) return null;
@@ -27,6 +41,18 @@ export function PendingApprovals() {
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {bottlenecks && bottlenecks.length > 0 && (
+          <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            ⚠ Kontext pro rozhodování — přetížené disciplíny v příštích 4
+            týdnech:{" "}
+            {bottlenecks
+              .map(
+                (b) =>
+                  `${SKILL_LABELS[b.skill as Skill] ?? b.skill} ${b.maxLoad} %`,
+              )
+              .join(", ")}
+          </p>
+        )}
         <ul className="space-y-2">
           {items.map((m) => {
             const overdue = isOverdue(m.dueDate);

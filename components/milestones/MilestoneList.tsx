@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SKILL_LABELS, type Skill } from "@/lib/constants";
 import { useMutation, useQuery } from "convex/react";
 import {
   CheckCircle2,
@@ -335,6 +336,12 @@ function MilestoneRow({
               )}
             </div>
           </div>
+
+          {(milestone.status === "planned" ||
+            milestone.status === "in_progress" ||
+            milestone.status === "rejected") && (
+            <MilestoneForecast milestoneId={milestone._id} />
+          )}
 
           {milestone.taskStats && milestone.taskStats.total > 0 && (
             <div className="space-y-1">
@@ -1034,5 +1041,44 @@ function MilestoneComments({
         </Button>
       </div>
     </div>
+  );
+}
+
+function MilestoneForecast({ milestoneId }: { milestoneId: Id<"milestones"> }) {
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay() || 7;
+    if (day !== 1) d.setDate(d.getDate() - (day - 1));
+    return d.getTime();
+  }, []);
+  const data = useQuery(api.capacity.milestoneForecast, { milestoneId, weekStart });
+
+  if (!data) return null;
+  if (data.blockedSkills.length > 0) {
+    return (
+      <p className="text-xs text-red-600 dark:text-red-400">
+        ⚠ Nelze odhadnout dokončení — chybí lidé s disciplínou:{" "}
+        {data.blockedSkills.map((s) => SKILL_LABELS[s as Skill] ?? s).join(", ")}
+      </p>
+    );
+  }
+  if (!data.forecastDate) return null;
+  return (
+    <p
+      className={
+        "text-xs " +
+        (data.atRisk
+          ? "font-medium text-red-600 dark:text-red-400"
+          : "text-slate-500 dark:text-slate-400")
+      }
+    >
+      {data.atRisk ? "⚠ " : ""}Realisticky dle kapacity: {formatDate(data.forecastDate)}
+      {" "}({data.totalRemaining.toString().replace(".", ",")} h zbývá)
+      {data.atRisk ? " — po plánovaném termínu" : ""}
+      {data.missingEstimates > 0
+        ? " · " + data.missingEstimates + " úkolů bez odhadu"
+        : ""}
+    </p>
   );
 }

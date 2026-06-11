@@ -232,6 +232,7 @@ export const cloneToProject = mutation({
           priority: t.priority,
           deadline: undefined,
           estimateHours: t.estimateHours,
+          skill: t.skill,
           order: order++,
           createdBy: me._id,
         });

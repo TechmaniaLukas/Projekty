@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { CalendarClock } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Drawer } from "@/components/ui/drawer";
@@ -16,10 +17,12 @@ import {
   PROJECT_DEPARTMENT_OPTIONS,
   PRIORITY_OPTIONS,
   ROLE_LABELS,
+  SKILL_LABELS,
   type ProjectDepartment,
   type Priority,
+  type Skill,
 } from "@/lib/constants";
-import { toDateInputValue, fromDateInputValue } from "@/lib/dates";
+import { toDateInputValue, fromDateInputValue, formatDate } from "@/lib/dates";
 
 interface Props {
   template: Doc<"projects"> | null;
@@ -41,6 +44,24 @@ export function UseTemplateDialog({ template, onClose }: Props) {
   const [ownerId, setOwnerId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay() || 7;
+    if (day !== 1) d.setDate(d.getDate() - (day - 1));
+    return d.getTime();
+  }, []);
+  const forecast = useQuery(
+    api.capacity.templateForecast,
+    template
+      ? {
+          templateId: template._id,
+          weekStart,
+          startDate: fromDateInputValue(startDate),
+        }
+      : "skip",
+  );
 
   useEffect(() => {
     if (!template) return;
@@ -180,6 +201,52 @@ export function UseTemplateDialog({ template, onClose }: Props) {
             />
           </div>
         </div>
+
+        {forecast && forecast.totalHours > 0 && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+            <div className="flex items-center gap-2 font-medium">
+              <CalendarClock className="h-4 w-4 shrink-0" />
+              Kapacitní projekce
+            </div>
+            <div className="mt-1 space-y-1">
+              {forecast.blockedSkills.length > 0 ? (
+                <p className="text-red-700 dark:text-red-300">
+                  Nelze spočítat dokončení — nikdo nemá disciplínu:{" "}
+                  <strong>
+                    {forecast.blockedSkills
+                      .map((s) => SKILL_LABELS[s as Skill] ?? s)
+                      .join(", ")}
+                  </strong>
+                  . Přiřaď disciplíny lidem v Uživatelé.
+                </p>
+              ) : forecast.forecastDate ? (
+                <p>
+                  Při volné kapacitě realisticky hotovo{" "}
+                  <strong>~{formatDate(forecast.forecastDate)}</strong> (
+                  {forecast.totalHours.toString().replace(".", ",")} h práce
+                  {forecast.perSkill[0]
+                    ? `, nejdéle ${SKILL_LABELS[forecast.perSkill[0].skill as Skill] ?? forecast.perSkill[0].skill}`
+                    : ""}
+                  ).
+                </p>
+              ) : null}
+              {forecast.unskilledHours > 0 && (
+                <p className="text-xs opacity-80">
+                  {forecast.unskilledHours.toString().replace(".", ",")} h úkolů
+                  bez disciplíny není v projekci zahrnuto.
+                </p>
+              )}
+              {forecast.forecastDate &&
+                fromDateInputValue(deadline) !== undefined &&
+                forecast.forecastDate > fromDateInputValue(deadline)! && (
+                  <p className="font-medium text-red-700 dark:text-red-300">
+                    ⚠ Zvolený termín je dřív než kapacitní projekce — projekt
+                    pravděpodobně nestihnete bez posílení.
+                  </p>
+                )}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
