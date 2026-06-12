@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, Settings, Archive, ArchiveRestore, FileText } from "lucide-react";
+import { ChevronLeft, Settings, Archive, ArchiveRestore, FileText, Gauge } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -27,6 +27,8 @@ import {
   PRIORITY_LABELS,
   PRIORITY_COLORS,
   DEPARTMENT_COLORS,
+  SKILL_LABELS,
+  type Skill,
 } from "@/lib/constants";
 import { formatDate, isOverdue } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -138,6 +140,7 @@ export default function ProjectDetailPage({
                 <span>{owner.name ?? owner.email}</span>
               </div>
             )}
+            <ProjectCapacityHealth projectId={project._id} />
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -264,5 +267,68 @@ export default function ProjectDetailPage({
       )}
       {tab === "activity" && <ProjectActivity projectId={project._id} />}
     </div>
+  );
+}
+
+function ProjectCapacityHealth({ projectId }: { projectId: Id<"projects"> }) {
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay() || 7;
+    if (day !== 1) d.setDate(d.getDate() - (day - 1));
+    return d.getTime();
+  }, []);
+  const health = useQuery(api.capacity.projectHealth, { projectId, weekStart });
+
+  if (!health) return null;
+
+  if (health.status === "blocked") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+        title={`Nikdo nemá disciplínu: ${health.blockedSkills
+          .map((s) => SKILL_LABELS[s as Skill] ?? s)
+          .join(", ")}`}
+      >
+        <Gauge className="h-3 w-3" />
+        Kapacita: chybí {health.blockedSkills
+          .map((s) => SKILL_LABELS[s as Skill] ?? s)
+          .join(", ")}
+      </span>
+    );
+  }
+  if (health.status === "unknown") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+        title={`${health.missingEstimates} otevřených úkolů bez odhadu — doplň odhady pro kapacitní projekci`}
+      >
+        <Gauge className="h-3 w-3" />
+        Kapacita: bez odhadů
+      </span>
+    );
+  }
+  const label = health.forecastDate
+    ? `realisticky ~${formatDate(health.forecastDate)}`
+    : "";
+  if (health.status === "risk") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+        title={`Zbývá ${health.totalRemaining.toString().replace(".", ",")} h práce${health.missingEstimates > 0 ? `, ${health.missingEstimates} úkolů bez odhadu` : ""}`}
+      >
+        <Gauge className="h-3 w-3" />
+        ⚠ Kapacitně {label} — po termínu
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"
+      title={`Zbývá ${health.totalRemaining.toString().replace(".", ",")} h práce${health.missingEstimates > 0 ? `, ${health.missingEstimates} úkolů bez odhadu` : ""}`}
+    >
+      <Gauge className="h-3 w-3" />
+      Kapacitně {label}
+    </span>
   );
 }

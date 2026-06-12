@@ -38,6 +38,41 @@ function absentWorkdaysInWeek(
   return count;
 }
 
+/**
+ * Index týdne pro uložené datum. Posun o poledne řeší rozdíl mezi UTC
+ * půlnocí (date input) a lokální půlnocí (klientův weekStart).
+ */
+function weekIndexOf(dateMs: number, weekStart: number): number {
+  return Math.floor((dateMs + DAY_MS / 2 - weekStart) / WEEK_MS);
+}
+
+/**
+ * Rozetře zbývající hodiny úkolu rovnoměrně mezi týdny od startDate (nebo
+ * týdne termínu, pokud start chybí) do týdne termínu. Overdue → aktuální
+ * týden. Týdny za horizontem jdou do `later`.
+ */
+function allocateRemaining(
+  remaining: number,
+  startDate: number | undefined,
+  deadline: number,
+  weekStart: number,
+  numWeeks: number,
+): { weeks: Map<number, number>; later: number } {
+  const lastIdx = Math.max(0, weekIndexOf(deadline, weekStart));
+  let firstIdx =
+    startDate !== undefined ? weekIndexOf(startDate, weekStart) : lastIdx;
+  if (firstIdx < 0) firstIdx = 0;
+  if (firstIdx > lastIdx) firstIdx = lastIdx;
+  const per = remaining / (lastIdx - firstIdx + 1);
+  const weeks = new Map<number, number>();
+  let later = 0;
+  for (let w = firstIdx; w <= lastIdx; w++) {
+    if (w < numWeeks) weeks.set(w, (weeks.get(w) ?? 0) + per);
+    else later += per;
+  }
+  return { weeks, later };
+}
+
 /** Kapacita uživatele v konkrétním týdnu po odečtení nepřítomností. */
 function userWeekCapacity(
   baseCapacity: number,
@@ -145,7 +180,10 @@ export const overview = query({
       task: Doc<"tasks">;
       remaining: number;
       skill: SkillKey | "ostatni";
-      weekIdx: number | null; // null = mimo horizont
+      /** hodiny rozeté do týdnů horizontu (start–termín rovnoměrně) */
+      weeks: Map<number, number>;
+      /** hodiny za horizontem */
+      later: number;
       noDeadline: boolean;
       assignee: Doc<"users"> | undefined;
     }
@@ -175,27 +213,32 @@ export const overview = query({
         (assignee?.skills?.[0] as SkillKey | undefined) ??
         "ostatni";
 
-      let weekIdx: number | null = null;
+      let weeks = new Map<number, number>();
+      let later = 0;
       let noDeadline = false;
       if (t.deadline) {
-        const clamped = Math.max(t.deadline, args.weekStart); // overdue → aktuální týden
-        weekIdx =
-          clamped < horizonEnd
-            ? Math.floor((clamped - args.weekStart) / WEEK_MS)
-            : null;
+        const alloc = allocateRemaining(
+          remaining,
+          t.startDate,
+          t.deadline,
+          args.weekStart,
+          numWeeks,
+        );
+        weeks = alloc.weeks;
+        later = alloc.later;
       } else {
         noDeadline = true;
       }
-      items.push({ task: t, remaining, skill, weekIdx, noDeadline, assignee });
+      items.push({ task: t, remaining, skill, weeks, later, noDeadline, assignee });
     }
 
-    const toCellTask = (it: DemandItem): CellTask => ({
+    const toCellTask = (it: DemandItem, hours: number): CellTask => ({
       taskId: it.task._id as string,
       title: it.task.title,
       projectId: it.task.projectId as string,
       projectName:
         realProjects.get(it.task.projectId as string)?.name ?? "—",
-      hours: it.remaining,
+      hours: Math.round(hours * 10) / 10,
       assigneeName: it.assignee
         ? (it.assignee.name ?? it.assignee.email ?? null)
         : null,
@@ -215,9 +258,11 @@ export const overview = query({
       );
       const mine = items.filter((i) => i.skill === skill);
       const cells = Array.from({ length: numWeeks }, (_, w) => {
-        const inWeek = mine.filter((i) => i.weekIdx === w);
+        const inWeek = mine.filter((i) => (i.weeks.get(w) ?? 0) > 0);
         const demand =
-          Math.round(inWeek.reduce((s, i) => s + i.remaining, 0) * 10) / 10;
+          Math.round(
+            inWeek.reduce((s, i) => s + (i.weeks.get(w) ?? 0), 0) * 10,
+          ) / 10;
         // Kapacita týdne snížená o nepřítomnosti členů poolu
         const weekCapacity =
           Math.round(
@@ -232,14 +277,14 @@ export const overview = query({
               0,
             ) * 10,
           ) / 10;
-        return { demand, capacity: weekCapacity, tasks: inWeek.map(toCellTask) };
+        return {
+          demand,
+          capacity: weekCapacity,
+          tasks: inWeek.map((i) => toCellTask(i, i.weeks.get(w) ?? 0)),
+        };
       });
       const later =
-        Math.round(
-          mine
-            .filter((i) => i.weekIdx === null && !i.noDeadline)
-            .reduce((s, i) => s + i.remaining, 0) * 10,
-        ) / 10;
+        Math.round(mine.reduce((s, i) => s + i.later, 0) * 10) / 10;
       const unscheduled =
         Math.round(
           mine.filter((i) => i.noDeadline).reduce((s, i) => s + i.remaining, 0) *
@@ -260,22 +305,24 @@ export const overview = query({
         const myAbsences = absencesByUser.get(u._id as string) ?? [];
         const mine = items.filter((i) => i.assignee?._id === u._id);
         const cells = Array.from({ length: numWeeks }, (_, w) => {
-          const inWeek = mine.filter((i) => i.weekIdx === w);
+          const inWeek = mine.filter((i) => (i.weeks.get(w) ?? 0) > 0);
           const demand =
-            Math.round(inWeek.reduce((s, i) => s + i.remaining, 0) * 10) / 10;
+            Math.round(
+              inWeek.reduce((s, i) => s + (i.weeks.get(w) ?? 0), 0) * 10,
+            ) / 10;
           const weekCapacity = userWeekCapacity(
             capacity,
             args.weekStart + w * WEEK_MS,
             myAbsences,
           );
-          return { demand, capacity: weekCapacity, tasks: inWeek.map(toCellTask) };
+          return {
+            demand,
+            capacity: weekCapacity,
+            tasks: inWeek.map((i) => toCellTask(i, i.weeks.get(w) ?? 0)),
+          };
         });
         const later =
-          Math.round(
-            mine
-              .filter((i) => i.weekIdx === null && !i.noDeadline)
-              .reduce((s, i) => s + i.remaining, 0) * 10,
-          ) / 10;
+          Math.round(mine.reduce((s, i) => s + i.later, 0) * 10) / 10;
         const unscheduled =
           Math.round(
             mine
@@ -383,8 +430,17 @@ export const assigneeWeekLoad = query({
       if (t.status === "done") continue;
       if (args.excludeTaskId && t._id === args.excludeTaskId) continue;
       if (!t.estimateHours || t.estimateHours <= 0) continue;
-      if (!t.deadline || t.deadline < args.weekStart || t.deadline >= weekEnd)
-        continue;
+      if (!t.deadline) continue;
+      // Podíl úkolu na cílovém týdnu (rozeteno mezi start a termín;
+      // overdue úkoly se nepočítají do budoucích týdnů cizí editace)
+      const lastIdxAbs = weekIndexOf(t.deadline, args.weekStart);
+      const firstIdxAbs =
+        t.startDate !== undefined
+          ? weekIndexOf(t.startDate, args.weekStart)
+          : lastIdxAbs;
+      // cílový týden má index 0 vůči args.weekStart
+      if (lastIdxAbs < 0 || firstIdxAbs > 0) continue;
+      const span = Math.max(1, lastIdxAbs - Math.min(firstIdxAbs, lastIdxAbs) + 1);
       let p = projectCache.get(t.projectId as string);
       if (p === undefined) {
         p = await ctx.db.get(t.projectId);
@@ -398,7 +454,7 @@ export const assigneeWeekLoad = query({
       const logged = entries.reduce((s, e) => s + e.hours, 0);
       const remaining = Math.max(0, t.estimateHours * calibration - logged);
       if (remaining > 0) {
-        demand += remaining;
+        demand += remaining / span;
         taskCount += 1;
       }
     }
@@ -543,10 +599,6 @@ async function buildFreeCapacityModel(
     if (!t.estimateHours || t.estimateHours <= 0) continue;
     if (!t.deadline) continue;
 
-    const clamped = Math.max(t.deadline, weekStart);
-    if (clamped >= horizonEnd) continue;
-    const weekIdx = Math.floor((clamped - weekStart) / WEEK_MS);
-
     const assignee = t.assigneeId ? userById.get(t.assigneeId as string) : undefined;
     const skill =
       (t.skill as string | undefined) ??
@@ -563,7 +615,16 @@ async function buildFreeCapacityModel(
       : 1;
     const remaining = Math.max(0, t.estimateHours * factor - logged);
     if (remaining <= 0) continue;
-    demandBySkill.get(skill)![weekIdx] += remaining;
+    // Rozetři mezi start a termín (stejně jako overview)
+    const alloc = allocateRemaining(
+      remaining,
+      t.startDate,
+      t.deadline,
+      weekStart,
+      numWeeks,
+    );
+    const arr = demandBySkill.get(skill)!;
+    for (const [w, h] of alloc.weeks) arr[w] += h;
   }
 
   const freeBySkill = new Map<string, number[]>();
@@ -844,5 +905,108 @@ export const bottleneckSummary = query({
     }
     out.sort((a, b) => b.maxLoad - a.maxLoad);
     return out;
+  },
+});
+
+/**
+ * Kapacitní zdraví projektu — realistické dokončení všech otevřených úkolů
+ * projektu vůči jeho deadline. Pro widget v hlavičce projektu.
+ */
+export const projectHealth = query({
+  args: { projectId: v.id("projects"), weekStart: v.number() },
+  handler: async (ctx, args) => {
+    const me = await requireUser(ctx);
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.isTemplate === true) return null;
+    if (!(await canViewProject(ctx, me, project))) return null;
+    if (project.status === "archived" || project.status === "done") return null;
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const open = tasks.filter((t) => t.status !== "done");
+    if (open.length === 0) return null;
+    const withEstimate = open.filter(
+      (t) => t.estimateHours && t.estimateHours > 0,
+    );
+    const missingEstimates = open.length - withEstimate.length;
+    if (withEstimate.length === 0) {
+      return {
+        status: "unknown" as const,
+        forecastDate: null,
+        deadline: project.deadline ?? null,
+        missingEstimates,
+        blockedSkills: [] as string[],
+        totalRemaining: 0,
+      };
+    }
+
+    const excludeIds = new Set(withEstimate.map((t) => t._id as string));
+    const model = await buildFreeCapacityModel(
+      ctx,
+      args.weekStart,
+      FORECAST_HORIZON_WEEKS,
+      excludeIds,
+    );
+
+    const users = await ctx.db.query("users").collect();
+    const userById = new Map(users.map((u) => [u._id as string, u]));
+    const neededBySkill = new Map<string, number>();
+    let totalRemaining = 0;
+    for (const t of withEstimate) {
+      const entries = await ctx.db
+        .query("timeEntries")
+        .withIndex("by_task", (q) => q.eq("taskId", t._id))
+        .collect();
+      const logged = entries.reduce((s, e) => s + e.hours, 0);
+      const factor = t.assigneeId
+        ? (model.calibration.get(t.assigneeId as string) ?? 1)
+        : 1;
+      const remaining = Math.max(0, (t.estimateHours ?? 0) * factor - logged);
+      if (remaining <= 0) continue;
+      totalRemaining += remaining;
+      const assignee = t.assigneeId
+        ? userById.get(t.assigneeId as string)
+        : undefined;
+      const skill =
+        (t.skill as string | undefined) ??
+        (assignee?.skills?.[0] as string | undefined) ??
+        "__none__";
+      neededBySkill.set(skill, (neededBySkill.get(skill) ?? 0) + remaining);
+    }
+    if (totalRemaining <= 0) return null;
+
+    let maxFinishIdx = 0;
+    const blockedSkills: string[] = [];
+    for (const [skill, hours] of neededBySkill) {
+      if (skill === "__none__") continue;
+      const finish = scheduleSkillHours(
+        hours,
+        model.freeBySkill.get(skill) ?? [],
+        model.capacityBySkill.get(skill) ?? 0,
+        0,
+      );
+      if (finish === null) blockedSkills.push(skill);
+      else maxFinishIdx = Math.max(maxFinishIdx, finish);
+    }
+
+    const forecastDate =
+      blockedSkills.length > 0
+        ? null
+        : args.weekStart + (maxFinishIdx + 1) * WEEK_MS - 1;
+    const atRisk =
+      forecastDate !== null &&
+      project.deadline !== undefined &&
+      forecastDate > project.deadline;
+
+    return {
+      status: blockedSkills.length > 0 ? ("blocked" as const) : atRisk ? ("risk" as const) : ("ok" as const),
+      forecastDate,
+      deadline: project.deadline ?? null,
+      missingEstimates,
+      blockedSkills,
+      totalRemaining: Math.round(totalRemaining * 10) / 10,
+    };
   },
 });
