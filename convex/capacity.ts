@@ -13,7 +13,41 @@ import type { Doc, Id } from "./_generated/dataModel";
 
 const DEFAULT_CAPACITY_HOURS = 32;
 const WEEK_MS = 7 * 24 * 3600 * 1000;
+const DAY_MS = 24 * 3600 * 1000;
 const CALIBRATION_WINDOW_MS = 90 * 24 * 3600 * 1000;
+
+/**
+ * Počet pracovních dnů (po–pá) v týdnu `weekStart`, které spadají do
+ * některé nepřítomnosti uživatele. from/to jsou půlnoci, to včetně.
+ */
+function absentWorkdaysInWeek(
+  weekStart: number,
+  absences: { from: number; to: number }[],
+): number {
+  if (absences.length === 0) return 0;
+  let count = 0;
+  for (let i = 0; i < 5; i++) {
+    // Porovnáváme poledne dne s intervalem [from, to + 1 den): odolné vůči
+    // posunu časových pásem (date input parsuje YYYY-MM-DD jako UTC půlnoc,
+    // klientův weekStart je lokální půlnoc).
+    const dayNoon = weekStart + i * DAY_MS + DAY_MS / 2;
+    if (absences.some((a) => dayNoon >= a.from && dayNoon < a.to + DAY_MS)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** Kapacita uživatele v konkrétním týdnu po odečtení nepřítomností. */
+function userWeekCapacity(
+  baseCapacity: number,
+  weekStart: number,
+  absences: { from: number; to: number }[],
+): number {
+  const absent = absentWorkdaysInWeek(weekStart, absences);
+  if (absent === 0) return baseCapacity;
+  return Math.max(0, Math.round(baseCapacity * (1 - absent / 5) * 10) / 10);
+}
 
 type SkillKey = (typeof SKILLS)[number];
 
@@ -49,14 +83,21 @@ export const overview = query({
     const horizonEnd = args.weekStart + numWeeks * WEEK_MS;
     const now = Date.now();
 
-    const [users, allProjects, allTasks] = await Promise.all([
+    const [users, allProjects, allTasks, allAbsences] = await Promise.all([
       ctx.db.query("users").collect(),
       ctx.db.query("projects").collect(),
       ctx.db.query("tasks").collect(),
+      ctx.db.query("absences").collect(),
     ]);
 
     const activeUsers = users.filter((u) => u.isActive !== false && u.role);
     const userById = new Map(activeUsers.map((u) => [u._id as string, u]));
+    const absencesByUser = new Map<string, { from: number; to: number }[]>();
+    for (const a of allAbsences) {
+      const arr = absencesByUser.get(a.userId as string) ?? [];
+      arr.push({ from: a.from, to: a.to });
+      absencesByUser.set(a.userId as string, arr);
+    }
 
     const realProjects = new Map(
       allProjects
@@ -177,7 +218,21 @@ export const overview = query({
         const inWeek = mine.filter((i) => i.weekIdx === w);
         const demand =
           Math.round(inWeek.reduce((s, i) => s + i.remaining, 0) * 10) / 10;
-        return { demand, tasks: inWeek.map(toCellTask) };
+        // Kapacita týdne snížená o nepřítomnosti členů poolu
+        const weekCapacity =
+          Math.round(
+            pool.reduce(
+              (s, u) =>
+                s +
+                userWeekCapacity(
+                  u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS,
+                  args.weekStart + w * WEEK_MS,
+                  absencesByUser.get(u._id as string) ?? [],
+                ),
+              0,
+            ) * 10,
+          ) / 10;
+        return { demand, capacity: weekCapacity, tasks: inWeek.map(toCellTask) };
       });
       const later =
         Math.round(
@@ -202,12 +257,18 @@ export const overview = query({
       )
       .map((u) => {
         const capacity = u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS;
+        const myAbsences = absencesByUser.get(u._id as string) ?? [];
         const mine = items.filter((i) => i.assignee?._id === u._id);
         const cells = Array.from({ length: numWeeks }, (_, w) => {
           const inWeek = mine.filter((i) => i.weekIdx === w);
           const demand =
             Math.round(inWeek.reduce((s, i) => s + i.remaining, 0) * 10) / 10;
-          return { demand, tasks: inWeek.map(toCellTask) };
+          const weekCapacity = userWeekCapacity(
+            capacity,
+            args.weekStart + w * WEEK_MS,
+            myAbsences,
+          );
+          return { demand, capacity: weekCapacity, tasks: inWeek.map(toCellTask) };
         });
         const later =
           Math.round(
@@ -272,7 +333,14 @@ export const assigneeWeekLoad = query({
     const user = await ctx.db.get(args.userId);
     if (!user || user.isActive === false) return null;
     const weekEnd = args.weekStart + WEEK_MS;
-    const capacity = user.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS;
+    const baseCapacity = user.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS;
+    // Kapacita týdne snížená o nepřítomnosti (dovolená/nemoc)
+    const myAbsences = await ctx.db
+      .query("absences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    const absentDays = absentWorkdaysInWeek(args.weekStart, myAbsences);
+    const capacity = userWeekCapacity(baseCapacity, args.weekStart, myAbsences);
     const now = Date.now();
 
     const tasks = await ctx.db
@@ -337,6 +405,8 @@ export const assigneeWeekLoad = query({
     return {
       demand: Math.round(demand * 10) / 10,
       capacity,
+      baseCapacity,
+      absentDays,
       calibration,
       taskCount,
     };
@@ -351,7 +421,10 @@ export const assigneeWeekLoad = query({
 const FORECAST_HORIZON_WEEKS = 26;
 
 interface FreeCapacityModel {
+  /** základní kapacita (bez nepřítomností) — pro extrapolaci za horizont */
   capacityBySkill: Map<string, number>;
+  /** kapacita per skill per týden snížená o nepřítomnosti */
+  capacityBySkillWeek: Map<string, number[]>;
   /** volné hodiny per skill per týden (kapacita − existující poptávka) */
   freeBySkill: Map<string, number[]>;
   calibration: Map<string, number>;
@@ -373,14 +446,21 @@ async function buildFreeCapacityModel(
   const now = Date.now();
   const horizonEnd = weekStart + numWeeks * WEEK_MS;
 
-  const [users, allProjects, allTasks] = await Promise.all([
+  const [users, allProjects, allTasks, allAbsences] = await Promise.all([
     ctx.db.query("users").collect(),
     ctx.db.query("projects").collect(),
     ctx.db.query("tasks").collect(),
+    ctx.db.query("absences").collect(),
   ]);
 
   const activeUsers = users.filter((u) => u.isActive !== false && u.role);
   const userById = new Map(activeUsers.map((u) => [u._id as string, u]));
+  const absencesByUser = new Map<string, { from: number; to: number }[]>();
+  for (const a of allAbsences) {
+    const arr = absencesByUser.get(a.userId as string) ?? [];
+    arr.push({ from: a.from, to: a.to });
+    absencesByUser.set(a.userId as string, arr);
+  }
   const realProjects = new Set(
     allProjects
       .filter((p) => p.isTemplate !== true && p.status !== "archived")
@@ -422,14 +502,33 @@ async function buildFreeCapacityModel(
     }
   }
 
-  // Kapacita per skill
+  // Kapacita per skill: základní (pro extrapolaci za horizont) + per týden
+  // snížená o nepřítomnosti členů poolu.
   const capacityBySkill = new Map<string, number>();
+  const capacityBySkillWeek = new Map<string, number[]>();
   for (const s of SKILLS) {
+    const pool = activeUsers.filter((u) => (u.skills ?? []).includes(s));
     capacityBySkill.set(
       s,
-      activeUsers
-        .filter((u) => (u.skills ?? []).includes(s))
-        .reduce((sum, u) => sum + (u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS), 0),
+      pool.reduce(
+        (sum, u) => sum + (u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS),
+        0,
+      ),
+    );
+    capacityBySkillWeek.set(
+      s,
+      Array.from({ length: numWeeks }, (_, w) =>
+        pool.reduce(
+          (sum, u) =>
+            sum +
+            userWeekCapacity(
+              u.weeklyCapacityHours ?? DEFAULT_CAPACITY_HOURS,
+              weekStart + w * WEEK_MS,
+              absencesByUser.get(u._id as string) ?? [],
+            ),
+          0,
+        ),
+      ),
     );
   }
 
@@ -469,14 +568,21 @@ async function buildFreeCapacityModel(
 
   const freeBySkill = new Map<string, number[]>();
   for (const s of SKILLS) {
-    const cap = capacityBySkill.get(s) ?? 0;
+    const capWeeks = capacityBySkillWeek.get(s)!;
     freeBySkill.set(
       s,
-      demandBySkill.get(s)!.map((d) => Math.max(0, cap - d)),
+      demandBySkill.get(s)!.map((d, w) => Math.max(0, capWeeks[w] - d)),
     );
   }
 
-  return { capacityBySkill, freeBySkill, calibration, weekStart, numWeeks };
+  return {
+    capacityBySkill,
+    capacityBySkillWeek,
+    freeBySkill,
+    calibration,
+    weekStart,
+    numWeeks,
+  };
 }
 
 /**
@@ -725,13 +831,14 @@ export const bottleneckSummary = query({
     );
     const out: { skill: string; maxLoad: number }[] = [];
     for (const s of SKILLS) {
-      const cap = model.capacityBySkill.get(s) ?? 0;
-      if (cap <= 0) continue;
+      if ((model.capacityBySkill.get(s) ?? 0) <= 0) continue;
+      const capWeeks = model.capacityBySkillWeek.get(s)!;
       const free = model.freeBySkill.get(s)!;
       let maxLoad = 0;
       for (let w = 0; w < numWeeks; w++) {
-        const demand = cap - free[w];
-        maxLoad = Math.max(maxLoad, Math.round((demand / cap) * 100));
+        if (capWeeks[w] <= 0) continue; // celý pool nepřítomen
+        const demand = capWeeks[w] - free[w];
+        maxLoad = Math.max(maxLoad, Math.round((demand / capWeeks[w]) * 100));
       }
       if (maxLoad > 95) out.push({ skill: s, maxLoad });
     }

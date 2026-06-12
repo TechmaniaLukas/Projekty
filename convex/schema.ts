@@ -222,6 +222,16 @@ export default defineSchema({
     .index("by_approver_and_status", ["approverId", "status"])
     .index("by_due", ["dueDate"]),
 
+  absences: defineTable({
+    userId: v.id("users"),
+    from: v.number(), // půlnoc prvního dne
+    to: v.number(), // půlnoc posledního dne (včetně)
+    note: v.optional(v.string()),
+    createdBy: v.id("users"),
+  })
+    .index("by_user", ["userId"])
+    .index("by_from", ["from"]),
+
   projectContacts: defineTable({
     projectId: v.id("projects"),
     name: v.string(),

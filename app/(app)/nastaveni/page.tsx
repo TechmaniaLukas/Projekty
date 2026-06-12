@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { ROLE_LABELS, DEPARTMENT_LABELS } from "@/lib/constants";
+import { fromDateInputValue, formatDate } from "@/lib/dates";
 
 type NotifyMode = "instant" | "daily" | "off";
 
@@ -175,6 +176,138 @@ export default function NastaveniPage() {
           </p>
         </CardContent>
       </Card>
+
+      <AbsencesSection />
     </div>
+  );
+}
+
+function AbsencesSection() {
+  const absences = useQuery(api.absences.listMine, {});
+  const add = useMutation(api.absences.add);
+  const remove = useMutation(api.absences.remove);
+  const toast = useToast();
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const fromMs = fromDateInputValue(from);
+    const toMs = fromDateInputValue(to);
+    if (fromMs === undefined || toMs === undefined) {
+      toast.error("Vyplň od i do");
+      return;
+    }
+    setBusy(true);
+    try {
+      await add({ from: fromMs, to: toMs, note: note || undefined });
+      toast.success("Nepřítomnost uložena");
+      setFrom("");
+      setTo("");
+      setNote("");
+    } catch (err) {
+      toast.error("Chyba", err instanceof Error ? err.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Nepřítomnosti (dovolená, nemoc)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Zadané dny se automaticky odečtou z tvé kapacity v plánování
+          (heat-mapa, projekce termínů, varování u úkolů). Počítají se jen
+          pracovní dny po–pá.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label htmlFor="abs-from">Od</Label>
+            <Input
+              id="abs-from"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="abs-to">Do (včetně)</Label>
+            <Input
+              id="abs-to"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[160px] flex-1">
+            <Label htmlFor="abs-note">Poznámka</Label>
+            <Input
+              id="abs-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Dovolená"
+            />
+          </div>
+          <Button onClick={submit} disabled={busy || !from || !to}>
+            Přidat
+          </Button>
+        </div>
+
+        {absences === undefined ? (
+          <p className="text-sm text-slate-400">Načítám…</p>
+        ) : absences.length === 0 ? (
+          <p className="text-sm text-slate-400 dark:text-slate-500">
+            Žádné zadané nepřítomnosti.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {absences.map((a) => {
+              const past = a.to < Date.now() - 24 * 3600 * 1000;
+              return (
+                <li
+                  key={a._id}
+                  className={
+                    "flex items-center justify-between gap-3 py-2 text-sm" +
+                    (past ? " opacity-50" : "")
+                  }
+                >
+                  <span className="text-slate-700 dark:text-slate-300">
+                    {formatDate(a.from)} – {formatDate(a.to)}
+                    {a.note && (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {" "}
+                        · {a.note}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await remove({ absenceId: a._id });
+                      } catch (err) {
+                        toast.error(
+                          "Chyba",
+                          err instanceof Error ? err.message : "",
+                        );
+                      }
+                    }}
+                    className="text-slate-400 hover:text-red-500"
+                    aria-label="Smazat nepřítomnost"
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

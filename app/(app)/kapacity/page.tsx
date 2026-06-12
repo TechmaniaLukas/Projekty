@@ -232,22 +232,24 @@ export default function KapacityPage() {
                       {r.capacity > 0 ? fmtH(r.capacity) : "—"}
                     </td>
                     {r.cells.map((c, i) => {
+                      const weekCap = c.capacity;
                       const load =
-                        r.capacity > 0
-                          ? Math.round((c.demand / r.capacity) * 100)
+                        weekCap > 0
+                          ? Math.round((c.demand / weekCap) * 100)
                           : c.demand > 0
                             ? null
                             : 0;
-                      const empty = c.demand === 0;
+                      const reduced = weekCap < r.capacity;
+                      const empty = c.demand === 0 && !reduced;
                       return (
                         <td key={i} className="px-1 py-1 text-center">
                           <button
                             type="button"
-                            disabled={empty}
+                            disabled={c.demand === 0}
                             onClick={() =>
                               setSelected({
                                 title: `${r.label} · ${weekLabel(weekStarts[i])}`,
-                                capacity: r.capacity > 0 ? r.capacity : null,
+                                capacity: weekCap > 0 ? weekCap : null,
                                 demand: c.demand,
                                 tasks: c.tasks,
                               })
@@ -256,19 +258,23 @@ export default function KapacityPage() {
                               "w-full min-w-[52px] rounded px-1 py-1.5 text-xs font-medium tabular-nums",
                               empty
                                 ? "text-slate-300 dark:text-slate-700"
-                                : cn(loadTone(load), "hover:opacity-80"),
+                                : c.demand === 0
+                                  ? "text-slate-400 dark:text-slate-500"
+                                  : cn(loadTone(load), "hover:opacity-80"),
                             )}
                             title={
                               empty
                                 ? undefined
-                                : `${fmtH(c.demand)} h poptávka${r.capacity > 0 ? ` / ${fmtH(r.capacity)} h kapacita (${load}%)` : " — bez kapacity!"}`
+                                : `${fmtH(c.demand)} h poptávka${weekCap > 0 ? ` / ${fmtH(weekCap)} h kapacita (${load}%)` : " — bez kapacity!"}${reduced ? ` · sníženo o nepřítomnosti (běžně ${fmtH(r.capacity)} h)` : ""}`
                             }
                           >
-                            {empty
-                              ? "·"
+                            {c.demand === 0
+                              ? reduced
+                                ? `↓${fmtH(weekCap)}`
+                                : "·"
                               : load === null
                                 ? `${fmtH(c.demand)}h!`
-                                : `${load}%`}
+                                : `${load}%${reduced ? "↓" : ""}`}
                           </button>
                         </td>
                       );
@@ -301,8 +307,9 @@ export default function KapacityPage() {
           <span className="h-3 w-3 rounded bg-red-600 dark:bg-red-700" /> &gt; 130 % kriticky
         </span>
         <span>
-          „h!" = poptávka bez lidí s danou disciplínou · „Později" = termín za
-          horizontem · čísla jsou ± kalibrace
+          „h!" = poptávka bez lidí s danou disciplínou · „↓" = kapacita snížená
+          o nepřítomnosti · „Později" = termín za horizontem · čísla jsou ±
+          kalibrace
         </span>
       </div>
 

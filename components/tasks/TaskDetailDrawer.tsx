@@ -436,6 +436,9 @@ function CapacityWarning({
       {" / "}
       {data.capacity.toString().replace(".", ",")} h
       {data.taskCount > 0 ? `, dalších ${data.taskCount} úkolů` : ""}
+      {data.absentDays > 0
+        ? `, ${data.absentDays} ${data.absentDays === 1 ? "den" : data.absentDays <= 4 ? "dny" : "dní"} nepřítomen`
+        : ""}
       {data.calibration !== 1
         ? `, kalibrace ×${data.calibration.toString().replace(".", ",")}`
         : ""}
